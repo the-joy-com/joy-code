@@ -56,6 +56,16 @@ The `harness` folder holds the harness we use to develop the coding agent.
 
 [`AGENTS.md`](AGENTS.md) holds the rules coding agents follow in this repository: the startup workflow, the working rules, the progress files, the definition of done and the end-of-session steps.
 
+### Task ledger
+
+Each state folder under `harness/state/` holds a `tasks.json` ledger that enforces WIP=1 (see [`AGENTS.md`](AGENTS.md)). Manage it from the repository root with:
+
+```bash
+uv run --locked --project cli joy task --help
+```
+
+`joy task activate` refuses to start a task while the Verified Completion Rate (passing tasks / activated tasks) is below 1.0, and only `joy task pass`, which runs the ledger's bootstrap script and records the evidence, marks a task `passing`. Finished tasks move to `tasks.archive.jsonl`, so the ledger stays the size of the open work. Only a human can drop a task: `joy task drop` asks to type the task id in an interactive terminal.
+
 ### Tasks
 
 `harness/instructions` holds the task specifications for the instructions subsystem. Each task is a numbered Markdown file (`1.md`, `2.md`, ...) with two sections:

@@ -8,7 +8,7 @@ Before writing code:
 
 1. Confirm the working directory with `pwd`.
 2. Run the bootstrap script of what is being worked on, always, whether it is the Joy coding agent itself (`./init.sh`, contract in [`BOOTSTRAP.md`](BOOTSTRAP.md)) or a target application (its own `init.sh`, for example `examples/note-taker/init.sh`, contract in its `BOOTSTRAP.md`). It installs the locked dependencies and checks that the project can start, can test, can see progress and can pick up next steps. A non-zero exit code names the broken property (see the matching `BOOTSTRAP.md`). If the application has no `init.sh`, say so in the progress file and ask a human how to bootstrap it.
-3. Read the handoff file if there is one, then the progress file (see Required Artifacts), for the latest verified state and next step.
+3. Read the handoff file if there is one, then the progress file and `joy task status` (see Required Artifacts), for the latest verified state, the active task and the next step.
 4. Read the decisions file for the design decisions that still govern the code.
 5. Review recent commits with `git log --oneline -5`.
 6. Continue from the next step recorded in the progress file.
@@ -17,10 +17,11 @@ If the bootstrap or the baseline verification is already failing, fix that first
 
 ## Working Rules
 
-- WIP=1: work on exactly one task at a time. A task is `not_started`, `active`, `blocked` or `passing`, and at most one task is `active`. The progress file names it, with its state, under an `## Active task` heading (Joy's `init.sh` checks that heading).
-- Only start the next task once the active one is `passing`, meaning it meets the Definition Of Done with recorded evidence. Do not mark a task complete just because code was added.
-- If the active task is `blocked`, record the blocker in the progress file and ask a human. Do not pick up another task in the meantime.
-- Keep changes within the active task's scope. Do not "also" refactor, fix or improve something else along the way: write it down as a candidate next step in the progress file instead. If a blocker seems to require a supporting fix outside that scope, stop and ask a human to validate the fix before making it.
+- WIP=1: work on exactly one task at a time. Tasks live in the task ledger (see Required Artifacts) as `not_started`, `active`, `blocked`, `passing` or `dropped`, and at most one is `active` or `blocked`. Change the ledger only through `joy task` (`uv run --locked --project cli joy task --help`, run from the repository root, with `--state` pointing at the state folder).
+- Never edit a harness task JSON file directly: not `tasks.json`, not `tasks.archive.jsonl`, in no state folder, and by no means (editor, file-writing tool, shell redirection, `sed`, a script). If the ledger is invalid or looks wrong, stop and ask a human instead of repairing it.
+- Split the work into tasks with `joy task add`. `joy task activate` refuses to start a task while the Verified Completion Rate (passing tasks / activated tasks, `dropped` excluded) is below 1.0, so the next task only starts once the active one is `passing`. Only `joy task pass` marks a task `passing`: it runs the bootstrap script and records the evidence, and refuses when that script fails. Do not mark a task complete just because code was added.
+- If the active task is `blocked`, record the blocker with `joy task block <id> --reason "..."` and in the progress file, then ask a human. Do not pick up another task in the meantime. Only a human may drop a task: `joy task drop` asks to type the task id at an interactive terminal, so do not try to run it or work around that confirmation; ask a human.
+- Keep changes within the active task's scope. Do not "also" refactor, fix or improve something else along the way: add it as a `not_started` task instead. If the added tasks start to look like scope creep, or a blocker seems to require a supporting fix outside that scope, block the active task and ask a human to validate before going on.
 - Do not silently change verification rules during implementation.
 - Prefer durable repo artifacts over chat summaries.
 
@@ -34,6 +35,7 @@ State files live in a state folder that depends on what is being worked on:
 That folder holds:
 
 - `PROGRESS.md`, the progress file: session log and current verified status.
+- `tasks.json`, the task ledger: the machine-readable state of each task and the evidence that it passed, managed with `joy task`. It only holds open tasks: `passing` and `dropped` ones move to the append-only `tasks.archive.jsonl` next to it, and only their counts stay. Read the ledger through `joy task status` (add `--json` for a compact machine-readable view), never by opening `tasks.json`, and do not read the archive unless a human asks for task history. Joy's `init.sh` creates and checks its own. For a target application, create it once with `joy task init --state harness/state/<worked-on-application> --bootstrap <path to its init.sh>`.
 - `DECISIONS.md`, the decisions file: one short memo per important design decision, giving what was decided, why, and when (a date). It is not a design document. Record a decision when it shapes how later work should be done, such as an interface or format choice, a trade-off, or a rule a human set.
 - `session-handoff.md`, the handoff file: optional compact handoff for larger sessions (see Handoff File).
 
@@ -60,7 +62,7 @@ A task is done only when all of the following are true:
 1. The target behavior is implemented.
 2. The application's tests pass locally.
 3. The application's verification checks pass.
-4. The progress file records the task in its session log, with evidence that the tests and verification checks actually ran and passed.
+4. `joy task pass` marked the task `passing` in the task ledger, and the progress file records the task in its session log.
 5. The repository remains restartable from the clock-in routine (see Session Start).
 
 The tests and verification checks depend on the application being worked on. For the Joy coding agent itself, it is `uv run pytest` in `cli/`, as its `README.md` documents. When that is an application other than the Joy coding agent itself (for example `examples/note-taker`), use the commands that application's documentation explicitly gives (its `README.md`, `ARCHITECTURE.md` or `AGENTS.md`, or existing pieces of `*.md` documentation that exist within the project). Do not guess or invent commands. If the documentation names none, say so in the progress file and ask a human how the work should be verified.

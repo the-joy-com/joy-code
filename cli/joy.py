@@ -2,9 +2,14 @@ import json
 import sys
 from importlib.metadata import version
 
+import task_ledger
+
 
 def main() -> None:
     args = sys.argv[1:]
+
+    if args and args[0] == "task":
+        sys.exit(task_ledger.main(args[1:]))
 
     if not args or "--help" in args or "-h" in args:
         print("joy - a tiny coding agent")
@@ -12,6 +17,7 @@ def main() -> None:
         print("Usage:")
         print("  joy --help            Print this help.")
         print("  joy version [--json]  Print the version.")
+        print("  joy task ...          Manage the WIP=1 task ledger (joy task --help).")
         sys.exit(0)
 
     if args == ["version"]:

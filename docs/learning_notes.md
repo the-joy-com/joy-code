@@ -279,3 +279,5 @@ Enforcing WIP=1 can start to be done in a very straightforward way in the AGENTS
 ```
 
 The phenomenon of a coding agent activating more tasks in a single session than optimal is called _overreach_.
+
+Ideally, the harness should continuously track VCR (Verified Completion Rate) = verified tasks / activated tasks; it should block new task activations when VCR < 1.0. This is why real good harnesses contain the state of track completion in machine readable format, like JSON.

@@ -8,6 +8,8 @@ START_CMD=(uv run --locked --project cli joy --help)
 VERIFY_CMD=(uv run --locked --project cli pytest cli)
 LOCK_FILE=cli/uv.lock
 PROGRESS_FILE=harness/state/PROGRESS.md
+TASKS_FILE=harness/state/tasks.json
+STATUS_CMD=(uv run --locked --project cli joy task status --state harness/state)
 
 echo "==> Installing dependencies (${INSTALL_CMD[*]})"
 LOCK_BEFORE=$(sha256sum "$LOCK_FILE" 2>/dev/null)
@@ -27,14 +29,23 @@ if [ ! -f "$PROGRESS_FILE" ]; then
 
 - Nothing recorded yet.
 
-## Active task
-
-- None: no task is `active` yet.
-
 ## Next step
 
 - None recorded: ask a human what to work on.
 MD
+fi
+
+if [ ! -f "$TASKS_FILE" ]; then
+  echo "==> Creating $TASKS_FILE (none found)"
+  cat > "$TASKS_FILE" <<'JSON'
+{
+  "version": 1,
+  "bootstrap": "./init.sh",
+  "next_id": 1,
+  "archived": {"passing": 0, "dropped": 0},
+  "tasks": []
+}
+JSON
 fi
 
 echo "==> Verifying bootstrap contract"
@@ -47,8 +58,8 @@ if ! "${VERIFY_CMD[@]}" >/dev/null 2>&1; then
   echo "FAIL: can-test (${VERIFY_CMD[*]})"; exit 12
 fi
 
-if ! grep -Eqi '^## active task' "$PROGRESS_FILE"; then
-  echo "FAIL: can-see-progress ($PROGRESS_FILE has no '## Active task' section)"; exit 13
+if ! TASK_STATUS=$("${STATUS_CMD[@]}" 2>&1); then
+  echo "FAIL: can-see-progress (${STATUS_CMD[*]}):"; echo "$TASK_STATUS"; exit 13
 fi
 
 if ! grep -Eqi '^## .*next step' "$PROGRESS_FILE"; then
@@ -65,7 +76,7 @@ echo "    can-test            PASS"
 echo "    can-see-progress    PASS"
 echo "    can-pick-next-steps PASS"
 echo
-echo "Active task (from $PROGRESS_FILE):"
-awk 'tolower($0) ~ /^## active task/{flag=1; next} /^## /{flag=0} flag && NF{print "    " $0}' "$PROGRESS_FILE" | head -3
+echo "Tasks (from $TASKS_FILE):"
+echo "$TASK_STATUS" | sed 's/^/    /'
 echo "Next step (from $PROGRESS_FILE):"
 awk 'tolower($0) ~ /^## .*next step/{flag=1; next} /^## /{flag=0} flag && NF{print "    " $0}' "$PROGRESS_FILE" | head -3

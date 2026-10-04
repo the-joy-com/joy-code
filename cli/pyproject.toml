@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 
 # Flat layout: the CLI module sits at the root of this folder.
 [tool.setuptools]
-py-modules = ["joy"]
+py-modules = ["joy", "task_ledger"]
 
 [dependency-groups]
 dev = [
