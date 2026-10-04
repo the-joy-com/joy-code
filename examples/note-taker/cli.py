@@ -6,6 +6,7 @@ from importlib.metadata import version
 from commands.ask import run_ask
 from commands.import_ import run_import
 from commands.index import run_index
+from commands.status import run_status
 
 HELP = """note-taker - a tiny note-taking app
 
@@ -15,6 +16,7 @@ Usage:
   note-taker ask <query> [-k N] Print the top N (default 3) notes matching <query>, with citations.
                                 Words after `--` are always query words, even if they
                                 look like an option: `ask -k 2 -- -k` searches for "-k".
+  note-taker status              Print the note count and the path of notes.json.
   note-taker version [--json]   Print the version.
   note-taker --help             Print this help.
 """
@@ -57,6 +59,8 @@ def main() -> None:
                     sys.exit(2)
                 # Unquoted words are joined, so `ask python async` works like `ask "python async"`.
                 sys.exit(asyncio.run(run_ask(" ".join(words), k)))
+            case "status" if rest == []:
+                sys.exit(asyncio.run(run_status()))
             case "version" if rest == []:
                 print(version("note-taker"))
                 sys.exit(0)

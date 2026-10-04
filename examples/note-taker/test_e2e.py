@@ -177,3 +177,20 @@ def test_ask_with_only_double_dash_still_requires_a_query(repo):
     result = run_cli(cli, "ask", "-k", "2", "--")
     assert result.returncode == 2
     assert result.stderr == "ask requires a query\n"
+
+
+def test_status_prints_the_note_count_and_store_path(repo, tmp_path):
+    cli = repo / "examples" / "note-taker" / "cli.py"
+    store = repo / "tmp" / ".note-taker"
+
+    empty = run_cli(cli, "status")
+    assert empty.returncode == 0, empty.stderr
+    assert empty.stdout == f"notes:    0\nstorage:  {store / 'notes.json'}\n"
+
+    sample = tmp_path / "sample-notes"
+    sample.mkdir()
+    (sample / "a.md").write_text("# A\n", encoding="utf-8")
+    assert run_cli(cli, "import", str(sample)).returncode == 0
+    assert run_cli(cli, "status").stdout.startswith("notes:    1\n")
+
+    assert run_cli(cli, "status", "extra").returncode == 2

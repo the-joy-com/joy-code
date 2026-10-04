@@ -1,4 +1,5 @@
-# notes on [hands on harness engineering course](https://hands-on-harness-engineering.com/)
+# notes from [hands on harness engineering course](https://hands-on-harness-engineering.com/)
+
 
 ## general principles
 
@@ -32,6 +33,7 @@
     - verification feedback
         - e.g. after each change the agent runs `pnpm test && pnpm lint` and reads the failures, looping until everything is green before saying it's done
 
+
 ## the five-subsystem harness model
 
 ![the five-subsystem harness model](./five-subsystem_harness_model.png)
@@ -45,6 +47,7 @@ In harnessing a coding agent, you'd have 5 subsystems:
 - feedback
 
 Usually, modifying a layer of the harness means adapting the other layers in some way.
+
 
 ### the instructions subsystem
 
@@ -74,17 +77,20 @@ Audit regularly, remove outdated, redundant, and contradictory entries in your i
 
 If an instruction must be in the entry file, put it at the top or bottom — never the middle. The "lost in the middle" effect tells us that LLMs use information at the extremes significantly better than in the center. But the better approach is to move instructions to topic documents for on-demand loading.
 
+
 ### the tooling subsystem
 
 Ensure the agent has sufficient tool access. Don't disable shell for "security" — if the agent can't even run `pip install`, how is it supposed to work? But don't open everything either — follow least-privilege principles.
 
 Usually, a tooling subsystem is expressed in terms of verbs for the coding agent.
 
+
 ### the running environement subsystem
 
 Environment subsystem: Make the environment state self-describing and deterministic. 
 
 This can span over things like using `pyproject.toml` or `package.json` to lock dependencies, `.nvmrc` or `.python-version` for runtime versions, Docker or dev containers for reproducibility, etc.
+
 
 ### the state subsystem
 
@@ -119,6 +125,43 @@ Topic documents that are scattered throughout the codebase should be concise the
 - **Consistency**: Define "consistent state" verification predicates — all tests pass, lint reports zero errors. The agent runs verification after each operation; inconsistent intermediate states don't get added. Like a bank transfer — you can't debit without crediting.
 - **Isolation**: When sub agents work concurrently, design state files to avoid race conditions. Simple approach: each agent uses its own progress file, or use git branches for isolation. Two chefs can't season the same pot simultaneously — who takes responsibility when it's over-salted?
 - **Durability**: Critical project knowledge lives in git-tracked files. Temporary state can stay in session memory, but cross-session knowledge must be persisted to files. What's in your head doesn't count — only what's on paper counts.
+
+Using `git commit` or `git add` should be considered after completing each atomic unit of work. Commit messages or notifications to humans should explain what was done and why. These are free, automatically versioned state snapshots.
+
+
+#### the notion of continuity artifact
+
+A coding agent should be treated like a brillant engineer with amnesia.
+
+LLMs context windows are finite: no matter what window size is claimed (128K, 200K, 1M), long tasks will eventually exhaust them. After exhaustion, either compaction (losing information) or reset (new session) is required. Both lose something.
+
+The gap between the agent's understanding and the actual state of the code repository is called _drift_. Every session boundary introduces drift; without control, it compounds.
+
+A deep problem often occurs during long-running coding tasks: information the agent produces isn't uniformly important. Intermediate reasoning steps contain the "why" of decisions — why option B was chosen over A, why this library instead of that one, why a particular optimization was skipped, etc.. The final output only contains the "what" — the code itself. Compaction strategies usually preserve the latter but lose the former. The next session sees the code but doesn't know why it's written that way, and might "optimize" away a deliberate design decision. One way to mitigate this is **continuity artifacts**.
+
+Continuity artifacts represent a persisted state in the form of files that let a new session unambiguously resume where the last one left off. The basic form: progress log + verification record + next actions. It's like a craftsman's journal.
+
+![continuity artifacts](./continuity-artifacts.png)
+
+
+#### the `DECISIONS.md` file
+
+You should also record important design decisions and their reasons in a `DECISIONS.md` file. No need for detailed design documents — just "what decision, why, when" — these are the memos in the coding agent journal.
+
+Not every task needs a context reset. Short tasks  can complete within one session. Long tasks (spanning sessions) must use progress files and decision logs for continuity. Decision criterion: if a task needs more than 60% of the window, start preparing handoff.
+
+
+### strategies to address context anxiety
+
+**Compaction**: Summarizing early conversation within the same session. 
+Advantage: maintains continuity, the agent can see "what." 
+Disadvantage: "why" is often lost in summaries — why option B was chosen over A, why a particular optimization was skipped. 
+More critically, compaction doesn't eliminate context anxiety — the agent knows context was once large, and _psychologically_ still tends to rush to closure.
+According to Anthropic, context anxiety is severe enough that compaction alone isn't sufficient.
+
+**Context reset**: Completely clearing context, opening a new session, rebuilding from persisted artifacts. 
+Advantage: clean _mental_ state — the new session has no "I'm running out of time" anxiety. 
+Disadvantage: depends on the completeness of handoff artifacts. If the journal is missing critical information, the new session may waste time going in the wrong direction.
 
 
 ### the feedback subsystem

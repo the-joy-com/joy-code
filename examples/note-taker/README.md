@@ -59,4 +59,5 @@ Notes are stored as JSON files in `<repo>/tmp/.note-taker`, created on the first
 - `note-taker ask <query> [-k N]`: print the top `N` notes (default 3) matching the most distinct words of `<query>`, each with its first non-blank, non-heading line and its source path. `-k` can go before or after the query words. Needs `index` to have run.
   - Everything after `--` is a query word, even if it looks like an option: `note-taker ask -k 2 -- -k` searches for `-k` instead of reading it as the option. Only the first `--` counts; a later one is a query word too.
   - Query words are split like the index: only runs of 3 or more letters or digits are kept, and common words such as `the` are dropped. A query made only of shorter words or punctuation (like `-k` itself) prints `no matches`.
+- `note-taker status`: print the number of notes and the path of `notes.json`.
 - `note-taker version [--json]`: print the version, as plain text or as `{"version": "<v>"}`.
