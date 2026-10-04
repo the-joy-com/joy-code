@@ -27,6 +27,10 @@ if [ ! -f "$PROGRESS_FILE" ]; then
 
 - Nothing recorded yet.
 
+## Active task
+
+- None: no task is `active` yet.
+
 ## Next step
 
 - None recorded: ask a human what to work on.
@@ -43,6 +47,10 @@ if ! "${VERIFY_CMD[@]}" >/dev/null 2>&1; then
   echo "FAIL: can-test (${VERIFY_CMD[*]})"; exit 12
 fi
 
+if ! grep -Eqi '^## active task' "$PROGRESS_FILE"; then
+  echo "FAIL: can-see-progress ($PROGRESS_FILE has no '## Active task' section)"; exit 13
+fi
+
 if ! grep -Eqi '^## .*next step' "$PROGRESS_FILE"; then
   echo "FAIL: can-see-progress ($PROGRESS_FILE has no next step section)"; exit 13
 fi
@@ -57,5 +65,7 @@ echo "    can-test            PASS"
 echo "    can-see-progress    PASS"
 echo "    can-pick-next-steps PASS"
 echo
+echo "Active task (from $PROGRESS_FILE):"
+awk 'tolower($0) ~ /^## active task/{flag=1; next} /^## /{flag=0} flag && NF{print "    " $0}' "$PROGRESS_FILE" | head -3
 echo "Next step (from $PROGRESS_FILE):"
 awk 'tolower($0) ~ /^## .*next step/{flag=1; next} /^## /{flag=0} flag && NF{print "    " $0}' "$PROGRESS_FILE" | head -3

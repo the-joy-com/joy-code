@@ -17,9 +17,10 @@ If the bootstrap or the baseline verification is already failing, fix that first
 
 ## Working Rules
 
-- Work on one feature at a time.
-- Do not mark a feature complete just because code was added.
-- Keep changes within the selected feature scope. If a blocker seems to require a supporting fix outside that scope, stop and ask a human to validate the fix before making it.
+- WIP=1: work on exactly one task at a time. A task is `not_started`, `active`, `blocked` or `passing`, and at most one task is `active`. The progress file names it, with its state, under an `## Active task` heading (Joy's `init.sh` checks that heading).
+- Only start the next task once the active one is `passing`, meaning it meets the Definition Of Done with recorded evidence. Do not mark a task complete just because code was added.
+- If the active task is `blocked`, record the blocker in the progress file and ask a human. Do not pick up another task in the meantime.
+- Keep changes within the active task's scope. Do not "also" refactor, fix or improve something else along the way: write it down as a candidate next step in the progress file instead. If a blocker seems to require a supporting fix outside that scope, stop and ask a human to validate the fix before making it.
 - Do not silently change verification rules during implementation.
 - Prefer durable repo artifacts over chat summaries.
 

@@ -253,3 +253,29 @@ Remember here that the goal is to have a bootstrap contract that passes with the
 The bootstrap phase can be materialized by an `init.sh` script, for instance. This bootstrap script should be idempotent, i.e. running it twice on the same repo produces the same end state. No surprises if a human or an AI learner re-runs it. The bootstrap tests should be load-bearing, i.e. a regression should abort the session.
 
 Initialization's output isn't code, it's infrastructure: runnable environment, verifiable tests, bootstrap contract, task breakdown. Time invested in initialization is fully recovered in the next 3-4 sessions. This isn't extra cost — it's upfront investment. The more solid the foundation, the faster the building goes up.
+
+
+### principes of a successful implementation
+
+
+### attention is a finite resource
+
+This isn't a metaphor — it's math. Assume the agent's context capacity is C and it activates k tasks simultaneously. Each task gets an average of C/k reasoning resources. When C/k drops below the minimum threshold needed to complete a single task, none of them get finished. Your stomach is only so big — stuff ten dumplings in at once and you won't digest them all, you'll just get ten cases of indigestion.
+
+See illustration below:
+
+![attention as finite resource](./attention-as-finite-resource.png)
+
+We apply here the principle of **WIP limit (Work-in-Progress limit)** taken from Kanban methodology: the core idea is to limit how many tasks are in-flight at once. For agents, WIP=1 is the safest default — finish one before starting the next. Like a buffet — don't pile your plate, finish one plate then go back for the next. Each of these atomic tasks should always go through a strict completion verification procedure (which should be the responsiblity of both our instructions and feedback subsystems).
+In this mental model, we can modelize the _scope-surface_ as a DAG structure where each node is a work unit and edges are dependencies. States are limited to four possible values: `not_started`, `active`, `blocked`, `passing`. This creates a _completion_ pressure, which is a constraining force the harness exerts through WIP limits and completion evidence requirements, forcing the agent to finish the current task before starting a new one.
+
+Enforcing WIP=1 can start to be done in a very straightforward way in the AGENTS.md file itself, see example below:
+
+```md
+## Work Rules
+- Work on one feature at a time
+- Only start the next feature after the current one passes end-to-end verification
+- Don't "also refactor" feature B while implementing feature A
+```
+
+The phenomenon of a coding agent activating more tasks in a single session than optimal is called _overreach_.

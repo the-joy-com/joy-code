@@ -12,10 +12,10 @@ After `./init.sh` exits 0, the repository satisfies all four:
 |---------------------|-----------------------------------------------------------------------|
 | can-start           | `uv run --locked --project cli joy --help` exits 0                    |
 | can-test            | `uv run --locked --project cli pytest cli` exits 0                    |
-| can-see-progress    | `harness/state/PROGRESS.md` exists with a `## ... next step` heading  |
+| can-see-progress    | `harness/state/PROGRESS.md` exists with `## Active task` and `## ... next step` headings |
 | can-pick-next-steps | `AGENTS.md` exists                                                    |
 
-`harness/state/` is not committed, so on a fresh clone `init.sh` creates a skeleton `PROGRESS.md` whose next step is to ask a human. An existing one is never touched.
+`harness/state/` is not committed, so on a fresh clone `init.sh` creates a skeleton `PROGRESS.md` with no active task and a next step that is to ask a human. An existing one is never touched.
 
 Failure exit codes: 10 = install (`uv sync --locked` failed or rewrote `cli/uv.lock`), 11 = can-start, 12 = can-test, 13 = can-see-progress, 14 = can-pick-next-steps.
 
