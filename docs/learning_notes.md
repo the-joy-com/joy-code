@@ -279,7 +279,8 @@ Enforcing WIP=1 can start to be done in a very straightforward way in the AGENTS
 ```
 
 The phenomenon of a coding agent activating more tasks in a single session than optimal is called _overreach_.
-
 Ideally, the harness should continuously track VCR (Verified Completion Rate) = verified tasks / activated tasks; it should block new task activations when VCR < 1.0. This is why real good harnesses contain the state of track completion in machine readable format, like JSON.
+
+Of course, there may be practical reasons why you may allow to be more lenient on the `n` value of WIP=n, for instance when a given feature or task takes a very long time to implement and if starting a new one won't mess the ongoing flow of the feature/task that is in progress (which is the whole point of what actual human teams of developers do on a daily basis).
 
 The evidence that moves a task to `passing` must be _executable_: a command that ran and produced an observable result (an exit code, an HTTP status, a test count). "The code looks fine" doesn't count; "`curl` returns 201" does. Otherwise the agent is just grading its own homework, and the verification gap stays open.

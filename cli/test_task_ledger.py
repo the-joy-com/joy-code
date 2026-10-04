@@ -127,10 +127,11 @@ def test_status_reports_vcr(state, capsys):
     assert run(state, "status", "--json") == 0
     status = json.loads(capsys.readouterr().out)
     assert status["vcr"] == {"passing": 0, "activated": 1}
-    assert status["current"]["id"] == "T-1"
+    assert status["wip_limit"] == 1
+    assert [t["id"] for t in status["current"]] == ["T-1"]
     assert run(state, "status") == 0
     out = capsys.readouterr().out
-    assert "VCR 0/1 (new activations blocked)" in out
+    assert "VCR 0/1, WIP limit 1 (new activations blocked)" in out
     assert "active: T-1 first" in out
 
 
@@ -170,7 +171,8 @@ def test_finished_tasks_leave_the_ledger_but_still_count(state, capsys, monkeypa
     status = json.loads(capsys.readouterr().out)
     assert status == {
         "vcr": {"passing": 1, "activated": 2},
-        "current": task(state, "T-3"),
+        "wip_limit": 1,
+        "current": [task(state, "T-3")],
         "not_started": [],
     }
 
@@ -221,3 +223,64 @@ def test_drop_is_refused_when_confirmation_does_not_match(state, monkeypatch):
     type_at_terminal(monkeypatch, "yes")
     assert run(state, "drop", "T-1", "--reason", "typo") == 1
     assert task(state, "T-1")["state"] == "not_started"
+
+
+def test_human_can_raise_wip_to_work_on_two_tasks(state, monkeypatch):
+    for title in ("first", "second", "third"):
+        run(state, "add", title)
+    type_at_terminal(monkeypatch, "2")
+    assert run(state, "wip", "2") == 0
+    assert ledger(state)["wip_limit"] == 2
+    assert run(state, "activate", "T-1") == 0
+    assert run(state, "activate", "T-2") == 0
+    assert run(state, "activate", "T-3") == 1
+    assert run(state, "status") == 0
+
+
+def test_wip_is_refused_without_an_interactive_terminal(state, monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
+    assert run(state, "wip", "2") == 1
+    assert "needs a human" in capsys.readouterr().err
+    assert "wip_limit" not in ledger(state)
+
+
+def test_wip_is_refused_when_confirmation_does_not_match(state, monkeypatch):
+    type_at_terminal(monkeypatch, "3")
+    assert run(state, "wip", "2") == 1
+    assert "wip_limit" not in ledger(state)
+
+
+def test_wip_cannot_go_below_the_work_in_progress(state, monkeypatch):
+    for title in ("first", "second"):
+        run(state, "add", title)
+    type_at_terminal(monkeypatch, "2")
+    run(state, "wip", "2")
+    run(state, "activate", "T-1")
+    run(state, "activate", "T-2")
+    type_at_terminal(monkeypatch, "1")
+    assert run(state, "wip", "1") == 1
+    assert run(state, "wip", "0") == 1
+    assert ledger(state)["wip_limit"] == 2
+
+
+def test_status_fails_on_hand_edited_wip_limit(state):
+    data = ledger(state)
+    data["wip_limit"] = 0
+    task_ledger.ledger_path(state).write_text(json.dumps(data))
+    assert run(state, "status") == 1
+
+
+@pytest.mark.parametrize("limit", ["two", "1.5"])
+def test_wip_rejects_a_limit_that_is_not_a_whole_number(state, limit):
+    with pytest.raises(SystemExit) as exc:
+        run(state, "wip", limit)
+    assert exc.value.code == 2
+    assert "wip_limit" not in ledger(state)
+
+
+@pytest.mark.parametrize("limit", ["2", 2.5, True])
+def test_status_fails_on_hand_edited_wip_limit_that_is_not_a_whole_number(state, limit):
+    data = ledger(state)
+    data["wip_limit"] = limit
+    task_ledger.ledger_path(state).write_text(json.dumps(data))
+    assert run(state, "status") == 1

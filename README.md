@@ -58,13 +58,13 @@ The `harness` folder holds the harness we use to develop the coding agent.
 
 ### Task ledger
 
-Each state folder under `harness/state/` holds a `tasks.json` ledger that enforces WIP=1 (see [`AGENTS.md`](AGENTS.md)). Manage it from the repository root with:
+Each state folder under `harness/state/` holds a `tasks.json` ledger that enforces the WIP limit, 1 by default (see [`AGENTS.md`](AGENTS.md)). Manage it from the repository root with:
 
 ```bash
 uv run --locked --project cli joy task --help
 ```
 
-`joy task activate` refuses to start a task while the Verified Completion Rate (passing tasks / activated tasks) is below 1.0, and only `joy task pass`, which runs the ledger's bootstrap script and records the evidence, marks a task `passing`. Finished tasks move to `tasks.archive.jsonl`, so the ledger stays the size of the open work. Only a human can drop a task: `joy task drop` asks to type the task id in an interactive terminal.
+`joy task activate` refuses to start a task while the Verified Completion Rate (passing tasks / activated tasks) is below 1.0, and only `joy task pass`, which runs the ledger's bootstrap script and records the evidence, marks a task `passing`. Finished tasks move to `tasks.archive.jsonl`, so the ledger stays the size of the open work. Only a human can drop a task (`joy task drop` asks to type the task id in an interactive terminal) or change the WIP limit, 1 by default (`joy task wip <n>` asks to type the new limit there).
 
 ### Tasks
 

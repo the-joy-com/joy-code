@@ -1,9 +1,10 @@
-"""Machine-readable task ledger enforcing WIP=1 through the Verified Completion Rate.
+"""Machine-readable task ledger enforcing a WIP limit through the Verified Completion Rate.
 
 The ledger is `<state>/tasks.json`. VCR = passing / activated, where activated tasks are the
-`active`, `blocked` and `passing` ones (`dropped` ones do not count, and 0/0 is 1.0). A task can
-only be activated while VCR is 1.0, and only `pass` can mark one `passing`: it runs the ledger's
-bootstrap script itself and records the evidence.
+`active`, `blocked` and `passing` ones (`dropped` ones do not count, and 0/0 is 1.0). The gap
+between the two is the work in progress, so with the default WIP limit of 1 a task can only be
+activated while VCR is 1.0. Only a human can change the limit (`wip`), and only `pass` can mark a
+task `passing`: it runs the ledger's bootstrap script itself and records the evidence.
 
 To keep the ledger the size of the current work, every save moves `passing` and `dropped` tasks to
 the append-only `<state>/tasks.archive.jsonl` and keeps only their counts, which is all VCR needs.
@@ -24,6 +25,7 @@ ACTIVATED = ("active", "blocked", "passing")
 IN_PROGRESS = ("active", "blocked")
 FINISHED = ("passing", "dropped")
 OUTPUT_TAIL_LINES = 3
+DEFAULT_WIP_LIMIT = 1
 
 
 class LedgerError(Exception):
@@ -52,6 +54,10 @@ def validate(ledger: dict) -> list[str]:
     errors = []
     if not isinstance(ledger.get("bootstrap"), str) or not ledger["bootstrap"]:
         errors.append("bootstrap must name the bootstrap script")
+    wip_limit = ledger.get("wip_limit", DEFAULT_WIP_LIMIT)
+    if not isinstance(wip_limit, int) or isinstance(wip_limit, bool) or wip_limit < 1:
+        errors.append("wip_limit must be a whole number of at least 1")
+        wip_limit = DEFAULT_WIP_LIMIT
     archived = ledger.get("archived", {})
     if not isinstance(archived, dict) or any(
         not isinstance(archived.get(k, 0), int) or archived.get(k, 0) < 0 for k in FINISHED
@@ -77,8 +83,8 @@ def validate(ledger: dict) -> list[str]:
         if state == "passing" and (task.get("evidence") or {}).get("exit_code") != 0:
             errors.append(f"{tid}: passing without evidence of a successful bootstrap run")
     in_progress = [t["id"] for t in tasks if isinstance(t, dict) and t.get("state") in IN_PROGRESS]
-    if len(in_progress) > 1:
-        errors.append(f"WIP=1 broken: {', '.join(in_progress)} are all active or blocked")
+    if len(in_progress) > wip_limit:
+        errors.append(f"WIP={wip_limit} broken: {', '.join(in_progress)} are all active or blocked")
     return errors
 
 
@@ -134,6 +140,18 @@ def vcr(ledger: dict, tasks: list[dict]) -> tuple[int, int]:
     return archived + passing, archived + activated
 
 
+def wip_limit(ledger: dict) -> int:
+    return ledger.get("wip_limit", DEFAULT_WIP_LIMIT)
+
+
+def confirm_by_human(expected: str, prompt: str, action: str) -> None:
+    # An agent running commands has no interactive terminal, so this is a human-only gate.
+    if not sys.stdin.isatty():
+        raise LedgerError(f"{action} needs a human at an interactive terminal; ask a human to run it")
+    if input(f"type {expected} {prompt}: ").strip() != expected:
+        raise LedgerError("confirmation did not match; nothing changed")
+
+
 def find(ledger: dict, tid: str) -> dict:
     for task in ledger["tasks"]:
         if task["id"] == tid:
@@ -181,14 +199,15 @@ def cmd_activate(args) -> int:
     ledger = load(args.state)
     task = find(ledger, args.id)
     require_state(task, "not_started", "blocked")
-    # The gate: VCR must be 1.0 once the task being (re)activated is set aside, so resuming a
-    # blocked task is allowed but starting a second one is not.
+    # The gate: once the task being (re)activated is set aside, the work in progress
+    # (activated - passing) must be under the WIP limit. With WIP=1 that means VCR is 1.0, so
+    # resuming a blocked task is allowed but starting a second one is not.
     others = [t for t in ledger["tasks"] if t["id"] != task["id"]]
     passing, activated = vcr(ledger, others)
-    if passing < activated:
+    if activated - passing >= wip_limit(ledger):
         busy = ", ".join(f"{t['id']} is {t['state']}" for t in others if t["state"] in IN_PROGRESS)
         print(f"refused: VCR is {passing}/{activated} < 1.0 ({busy}). "
-              "Get it passing (joy task pass) or ask a human.", file=sys.stderr)
+              f"WIP limit is {wip_limit(ledger)}. Get it passing (joy task pass) or ask a human.", file=sys.stderr)
         return 1
     task["state"] = "active"
     task["activated_at"] = now()
@@ -213,17 +232,29 @@ def cmd_drop(args) -> int:
     ledger = load(args.state)
     task = find(ledger, args.id)
     require_state(task, "not_started", "active", "blocked")
-    # Only humans drop: dropping lifts the VCR gate, so it needs someone typing at a terminal,
-    # which an agent running commands without one cannot do.
-    if not sys.stdin.isatty():
-        raise LedgerError("drop needs a human at an interactive terminal; ask a human to run it")
-    if input(f"type {task['id']} to drop it: ").strip() != task["id"]:
-        raise LedgerError(f"confirmation did not match; {task['id']} is unchanged")
+    # Only humans drop: dropping lifts the VCR gate.
+    confirm_by_human(task["id"], "to drop it", "drop")
     task["state"] = "dropped"
     task["dropped_reason"] = args.reason
     task.pop("blocker", None)
     save(args.state, ledger)
     print(f"{task['id']} is dropped: {args.reason}")
+    return 0
+
+
+def cmd_wip(args) -> int:
+    ledger = load(args.state)
+    if args.limit < 1:
+        raise LedgerError("the WIP limit must be at least 1")
+    in_progress = [t["id"] for t in ledger["tasks"] if t["state"] in IN_PROGRESS]
+    if len(in_progress) > args.limit:
+        raise LedgerError(f"{', '.join(in_progress)} are active or blocked; finish or drop some first")
+    # Only humans change the limit: raising it lifts the gate like a drop does.
+    confirm_by_human(str(args.limit), "to set the WIP limit", "wip")
+    old = wip_limit(ledger)
+    ledger["wip_limit"] = args.limit
+    save(args.state, ledger)
+    print(f"WIP limit is {args.limit} (was {old})")
     return 0
 
 
@@ -262,12 +293,13 @@ def cmd_status(args) -> int:
         # Compact on purpose: open work only, no history or evidence (see tasks.archive.jsonl).
         print(json.dumps({
             "vcr": {"passing": passing, "activated": activated},
-            "current": current[0] if current else None,
+            "wip_limit": wip_limit(ledger),
+            "current": current,
             "not_started": [{"id": t["id"], "title": t["title"]} for t in tasks if t["state"] == "not_started"],
         }, indent=2))
         return 0
-    gate = "new activations allowed" if passing == activated else "new activations blocked"
-    print(f"VCR {passing}/{activated} ({gate})")
+    gate = "new activations allowed" if len(current) < wip_limit(ledger) else "new activations blocked"
+    print(f"VCR {passing}/{activated}, WIP limit {wip_limit(ledger)} ({gate})")
     if not current:
         print("no active task")
     for t in current:
@@ -282,7 +314,7 @@ def cmd_status(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--state", default="harness/state", help="state folder holding tasks.json")
-    parser = argparse.ArgumentParser(prog="joy task", description="WIP=1 task ledger")
+    parser = argparse.ArgumentParser(prog="joy task", description="WIP-limited task ledger")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("init", parents=[common], help="create the ledger")
@@ -291,7 +323,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("add", parents=[common], help="add a not_started task")
     p.add_argument("title")
     p.set_defaults(func=cmd_add)
-    p = sub.add_parser("activate", parents=[common], help="activate a task (refused if VCR < 1.0)")
+    p = sub.add_parser("activate", parents=[common], help="activate a task (refused at the WIP limit, VCR < 1.0 with WIP=1)")
     p.add_argument("id")
     p.set_defaults(func=cmd_activate)
     p = sub.add_parser("block", parents=[common], help="block the active task")
@@ -305,6 +337,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("id")
     p.add_argument("--reason", required=True)
     p.set_defaults(func=cmd_drop)
+    p = sub.add_parser("wip", parents=[common], help="set the WIP limit (humans only: asks to type it at an interactive terminal)")
+    p.add_argument("limit", type=int)
+    p.set_defaults(func=cmd_wip)
     p = sub.add_parser("status", parents=[common], help="print VCR and the active task; fails if the ledger is invalid")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_status)
