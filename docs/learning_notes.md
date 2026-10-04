@@ -87,10 +87,11 @@ Usually, a tooling subsystem is expressed in terms of verbs for the coding agent
 
 ### the running environement subsystem
 
+Before letting the agent start working, you should use a separate phase to get the base environment ready.
+
 Environment subsystem: Make the environment state self-describing and deterministic. 
 
 This can span over things like using `pyproject.toml` or `package.json` to lock dependencies, `.nvmrc` or `.python-version` for runtime versions, Docker or dev containers for reproducibility, etc.
-
 
 ### the state subsystem
 
@@ -113,6 +114,7 @@ One gotcha => _knowledge Decay Rate_: the proportion of knowledge entries that b
 A few guidelines to live by when setting up the state subsystem:
 - knowledge lives next to code in digestable fragments instead of being in a giant document
 - the entry file of your state subsystem (`AGENTS.md` or `CLAUDE.md`) should be concise
+- this file should explain how the project is structured
 - each piece of knowledge should be minimal and have a clear use-case; if removing content in a given piece of docs does not change agent's decision quality then the information is probably useless... however you should always be able to answer the _cold start_ questions easily and with speed using your agent, this is a delicate equilibrium to reach
 - docs should update with code => knowlege updates should be bound to code updates _systematically_, ideally this should be checked via the CI automatically
 
@@ -182,4 +184,72 @@ Verification commands:
 - Full verification: make check (includes all above)
 ```
 
-...
+## lifecycle of an AI agent-driven coding project
+
+### initialization VS implementation
+
+_The implementation phase_ of a coding project optimizes for: maximizing the quantity and quality of verified features while the _initialization phase_ optimizes for: maximizing the reliability and efficiency of all subsequent implementation. Initialization builds the environment, instructions and feedback loop, and implementation runs tooling and feedback while keeping state up to date.
+
+When you mix initialization and implementation, the agent faces a multi-objective optimization problem — simultaneously building infrastructure and writing feature code. Without explicit priority setting, the agent naturally gravitates toward writing code (because that's directly visible output) while sacrificing infrastructure (because its value only shows in subsequent sessions). It's like telling a construction crew to simultaneously pour the foundation and build the walls — they'll probably rush to build walls because walls are visible and demonstrable. But a house with a bad foundation has systemic problems down the line.
+
+Session budget is being wasted too. Initialization work (configuring environments, setting up tests, understanding project structure) consumes significant budget, leaving less for actual feature implementation. Result: the first session only completes half the features, and the second session has to start over understanding the project. Budget spent on the foundation, but the foundation isn't solid either — neither goal achieved.
+
+The most easily overlooked problem is implicit assumption landmines. Decisions the agent makes during initialization (which test framework, how to organize directories, dependency management) — if not explicitly recorded, subsequent sessions can't understand these choices. Worse, subsequent sessions might make contradictory choices. The first construction crew used a concrete foundation, the second crew doesn't know and drove wooden pilings into it — the foundation cracks.
+
+Here is a mental model for this, regrouping 6 concepts =>
+
+- **Initialization Phase**: The first phase in the agent's lifecycle — no feature implementation, only establishing prerequisites for all subsequent implementation phases. The output isn't code, it's infrastructure.
+- **Bootstrap Contract**: The conditions under which a project can be unambiguously operated by a fresh agent session:
+    - can start
+    - can test
+    - can see progress
+    - can pick up next steps
+    
+    ... four conditions, all required.
+
+- **Cold Start vs Warm Start**: Cold start is from an empty directory where the agent must guess project structure; warm start is from a template or existing project where infrastructure is already in place. Warm start far outperforms cold start — like starting work on a site with running water and electricity versus beginning from a barren wasteland.
+- **Handoff Readiness**: The project is in a state at any given moment where a fresh agent can take over. No verbal explanation needed — just repo contents.
+- **Time to First Verification**: The time from project start until the first feature point passes verification. This is the core metric for measuring initialization efficiency.
+- **Downstream Usability**: The best measure of initialization quality — the proportion of subsequent sessions that can successfully execute tasks without relying on implicit knowledge.
+
+### principles for a successful initialization
+
+Treat initialization as a dedicated phase. The first session does only initialization — no business feature code at all. Initialization produces:
+
+- A runnable environment: the project starts, dependencies are installed, no environment issues. Foundation poured, no cracks.
+- A verifiable test framework. At least one example test passes. This proves the test framework itself is properly configured — like standing a pillar on the foundation to prove it can bear weight.
+- A contract document bootstrapped, for instance:
+
+```md
+# Initialization Contract
+
+## Start Commands
+- Install dependencies: `make setup`
+- Start dev server: `make dev`
+- Run tests: `make test`
+- Full verification: `make check`
+
+## Current State
+- All dependencies installed and locked
+- Test framework configured (Vitest + React Testing Library)
+- Example test passing (1/1)
+- Lint rules configured (ESLint + Prettier)
+
+## Project Structure
+- src/ — Source code
+- src/components/ — React components
+- src/api/ — API client
+- tests/ — Test files
+```
+
+- A checkpoint procedure: for instance `git commit` or `git add` with human in the loop for review.
+
+Remember here that the goal is to have a bootstrap contract that passes with these 4 conditions:
+- can start
+- can test
+- can see progress
+- can pick up next steps
+
+The bootstrap phase can be materialized by an `init.sh` script, for instance. This bootstrap script should be idempotent, i.e. running it twice on the same repo produces the same end state. No surprises if a human or an AI learner re-runs it. The bootstrap tests should be load-bearing, i.e. a regression should abort the session.
+
+Initialization's output isn't code, it's infrastructure: runnable environment, verifiable tests, bootstrap contract, task breakdown. Time invested in initialization is fully recovered in the next 3-4 sessions. This isn't extra cost — it's upfront investment. The more solid the foundation, the faster the building goes up.

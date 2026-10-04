@@ -2,6 +2,16 @@
 
 Joy Code is a wannabee clone of [Claude Code](https://claude.com/claude-code), built using the contents of [Hands-On Harness Engineering](https://hands-on-harness-engineering.com/) as a starter, but in Python instead of Node.
 
+## Bootstrap
+
+On a fresh clone, and at the start of every coding-agent session, run:
+
+```bash
+./init.sh
+```
+
+It installs the locked dependencies and checks that Joy can start and be tested. See [`BOOTSTRAP.md`](BOOTSTRAP.md) for its contract and exit codes.
+
 ## Running the CLI
 
 The CLI lives in the `cli` folder and is managed with [uv](https://docs.astral.sh/uv/).
@@ -29,6 +39,16 @@ Then run the executable (no Python or uv needed):
 ```
 
 The executable only runs on the OS and CPU architecture it was built on.
+
+## Testing
+
+Tests use [pytest](https://docs.pytest.org/), a uv dev dependency. Run the suite from the `cli` folder:
+
+```bash
+cd cli && uv run pytest
+```
+
+This is Joy's verification check. For now `cli/test_suite.py` only proves the suite runs.
 
 ## Harness
 

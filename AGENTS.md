@@ -7,13 +7,13 @@ This repository is designed for long-running coding-agent work. The goal is not 
 Before writing code:
 
 1. Confirm the working directory with `pwd`.
-2. Read the handoff file if there is one, then the progress file (see Required Artifacts), for the latest verified state and next step.
-3. Read the decisions file for the design decisions that still govern the code.
-4. Review recent commits with `git log --oneline -5`.
-5. Run the application's verification check to confirm the repo is in a consistent state. Use the command its documentation gives (see Definition Of Done), for example `uv run pytest` for `examples/note-taker`. Never invent one: if the documentation names none, say so in the progress file and ask a human how to verify.
+2. Run the bootstrap script of what is being worked on, always, whether it is the Joy coding agent itself (`./init.sh`, contract in [`BOOTSTRAP.md`](BOOTSTRAP.md)) or a target application (its own `init.sh`, for example `examples/note-taker/init.sh`, contract in its `BOOTSTRAP.md`). It installs the locked dependencies and checks that the project can start, can test, can see progress and can pick up next steps. A non-zero exit code names the broken property (see the matching `BOOTSTRAP.md`). If the application has no `init.sh`, say so in the progress file and ask a human how to bootstrap it.
+3. Read the handoff file if there is one, then the progress file (see Required Artifacts), for the latest verified state and next step.
+4. Read the decisions file for the design decisions that still govern the code.
+5. Review recent commits with `git log --oneline -5`.
 6. Continue from the next step recorded in the progress file.
 
-If baseline verification is already failing, fix that first. Do not stack new feature work on top of a broken starting state.
+If the bootstrap or the baseline verification is already failing, fix that first. Do not stack new feature work on top of a broken starting state.
 
 ## Working Rules
 
@@ -62,7 +62,7 @@ A task is done only when all of the following are true:
 4. The progress file records the task in its session log, with evidence that the tests and verification checks actually ran and passed.
 5. The repository remains restartable from the clock-in routine (see Session Start).
 
-The tests and verification checks depend on the application being worked on. When that is an application other than the Joy coding agent itself (for example `examples/note-taker`), use the commands that application's documentation explicitly gives (its `README.md`, `ARCHITECTURE.md` or `AGENTS.md`, or existing pieces of `*.md` documentation that exist within the project). Do not guess or invent commands. If the documentation names none, say so in the progress file and ask a human how the work should be verified.
+The tests and verification checks depend on the application being worked on. For the Joy coding agent itself, it is `uv run pytest` in `cli/`, as its `README.md` documents. When that is an application other than the Joy coding agent itself (for example `examples/note-taker`), use the commands that application's documentation explicitly gives (its `README.md`, `ARCHITECTURE.md` or `AGENTS.md`, or existing pieces of `*.md` documentation that exist within the project). Do not guess or invent commands. If the documentation names none, say so in the progress file and ask a human how the work should be verified.
 
 Tracking features and their state is the responsibility of the humans developing the application, not of the coding agent: do not create or update a features list.
 
@@ -70,7 +70,7 @@ Tracking features and their state is the responsibility of the humans developing
 
 Before ending a session:
 
-1. Run the application's verification check again (the same documented command as at clock in) to confirm the repo is in a consistent state.
+1. Run the application's verification check again (the same documented command the bootstrap script runs at clock in) to confirm the repo is in a consistent state.
 2. Update the progress file, including the result of that check, and record any new design decision in the decisions file, condensing either one first if it has grown bloated (see Required Artifacts). For a larger session, also rewrite the handoff file (see Handoff File).
 3. Record any unresolved risk or blocker.
 4. Add to git staging area modified files with a descriptive message once the work is in a safe state _then_ ask for a human to review the work.

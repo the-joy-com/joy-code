@@ -4,6 +4,16 @@ Note Taker is an example application used to illustrate what the Joy coding agen
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for its layout, data flow and module boundaries.
 
+## Bootstrap
+
+On a fresh clone, and at the start of every coding-agent session on this app, run from this folder:
+
+```bash
+./init.sh
+```
+
+It installs the locked dependencies and checks that the app can start and be tested. See [`BOOTSTRAP.md`](BOOTSTRAP.md) for its contract and exit codes.
+
 ## Running the CLI
 
 The CLI lives in this folder and is managed with [uv](https://docs.astral.sh/uv/).
