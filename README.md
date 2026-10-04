@@ -34,9 +34,11 @@ The executable only runs on the OS and CPU architecture it was built on.
 
 The `harness` folder holds the harness we use to develop the coding agent.
 
+[`AGENTS.md`](AGENTS.md) holds the rules coding agents follow in this repository: the startup workflow, the working rules, the progress files, the definition of done and the end-of-session steps.
+
 ### Tasks
 
-`harness/tasks` holds the task specifications for the instruction subsystem. Each task is a numbered Markdown file (`1.md`, `2.md`, ...) with two sections:
+`harness/instructions` holds the task specifications for the instructions subsystem. Each task is a numbered Markdown file (`1.md`, `2.md`, ...) with two sections:
 
 - **TASK**: what to build.
 - **DONE WHEN**: the commands to run, and what they must output, before the task counts as complete.

@@ -2,6 +2,8 @@
 
 Note Taker is an example application used to illustrate what the Joy coding agent and its harness can produce.
 
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for its layout, data flow and module boundaries.
+
 ## Running the CLI
 
 The CLI lives in this folder and is managed with [uv](https://docs.astral.sh/uv/).

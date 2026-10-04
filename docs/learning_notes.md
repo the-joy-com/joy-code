@@ -15,7 +15,7 @@
     - Verification Gap: The gap between the agent's confidence in its output and actual correctness. The agent says "I'm done" when it's not done — this is the most common failure mode.
 - **Harness** definition: Everything outside the model — instructions, tools, environment, state management, verification feedback. If it's not model weights, it's harness.
 - In harness engineering, a diagnostic loop consists of executing, observing, and attributing the failure to one of the 5 harness layers, to fix that layer, and to re-execute.
-- In harness engineering, a system of record (SoR) is the central, authoritative data source that serves as the "single source of truth" for a project.
+- In harness engineering, a system of record (SoR) is the central, authoritative data source that serves as the "single source of truth" for a project. This is absolutely mandatory for an AI coding agent: the repository at hand should be the self-contained source of information on how to build stuff. It's called the "repo as spec" principle.
 - one good methodology in testing harness quality is to stay "iso-model", meaning, don't swap models to get better results, improve each subsystem to the max before deciding to upgrade the model; also one good approach in improving a harness is to distinguish between:
     - "gulf of execution": agent does not know _how_ to do something
     - "gulf of verification": agent does not if what it built is _right_
@@ -46,7 +46,7 @@ In harnessing a coding agent, you'd have 5 subsystems:
 
 Usually, modifying a layer of the harness means adapting the other layers in some way.
 
-### the instruction subsystem
+### the instructions subsystem
 
 It's the one that contains the project rules, materialized by the `AGENTS.md` file.
 
@@ -73,7 +73,34 @@ This can span over things like using `pyproject.toml` or `package.json` to lock 
 
 Long tasks need progress tracking. This mean each task needs to produce a durable artifact that the next session can read.
 
-You can get by with a simple `PROGRESS.md` file recording: what's done, what's in progress, what's blocked. This is to be updated before each session ends and to be read when the next session starts.
+You can get by with a simple `PROGRESS.md` file recording: what's done, what's in progress, what's blocked. This is to be updated before each session ends and to be read when the next session starts. Cross-session knowledge recoverability directly determines task success rates with coding agents, this state must exist in the repository — because that's the only stable, accessible storage the agent has.
+
+#### the "repo as spec" principle
+
+Knowledge not in the repo doesn't exist for the agent. Putting critical decisions in the repo is the most basic harness investment.
+
+You can quickly try if your repo as spec works well by asking these types of questions as a _cold start_ (can a fresh session answer five basic questions using only repo contents?) =>
+
+![state subsystem checklist](./state-subsystem-checklist.png)
+
+If it can't answer, the map has blank spots. Where the map is blank, the agent guesses — wrong guesses become bugs, excessive guessing wastes context. And every new session guesses all over again. The cost of guessing is always higher than the cost of drawing the map properly in the first place.
+
+One gotcha => _knowledge Decay Rate_: the proportion of knowledge entries that become stale per unit of time. Documentation going out of sync with code is the biggest enemy — worse than no documentation at all.
+
+A few guidelines to live by when setting up the state subsystem:
+- knowledge lives next to code in digestable fragments instead of being in a giant document
+- the entry file of your state subsystem (`AGENTS.md` or `CLAUDE.md`) should be concise
+- each piece of knowledge should be minimal and have a clear use-case; if removing content in a given piece of docs does not change agent's decision quality then the information is probably useless... however you should always be able to answer the _cold start_ questions easily and with speed using your agent, this is a delicate equilibrium to reach
+- docs should update with code => knowlege updates should be bound to code updates _systematically_, ideally this should be checked via the CI automatically
+
+
+#### analogy of agent state management with ACID principles
+
+- **Atomicity**:  Each "logical operation" (e.g., "add new endpoint and update tests") gets one git commit or git add. If it fails midway, agent should be able to roll back using git as well. All or nothing — no "half done".
+- **Consistency**: Define "consistent state" verification predicates — all tests pass, lint reports zero errors. The agent runs verification after each operation; inconsistent intermediate states don't get added. Like a bank transfer — you can't debit without crediting.
+- **Isolation**: When sub agents work concurrently, design state files to avoid race conditions. Simple approach: each agent uses its own progress file, or use git branches for isolation. Two chefs can't season the same pot simultaneously — who takes responsibility when it's over-salted?
+- **Durability**: Critical project knowledge lives in git-tracked files. Temporary state can stay in session memory, but cross-session knowledge must be persisted to files. What's in your head doesn't count — only what's on paper counts.
+
 
 ### the feedback subsystem
 
