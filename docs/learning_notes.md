@@ -57,6 +57,23 @@ It's the one that contains the project rules, materialized by the `AGENTS.md` fi
     - tech stack and versions (e.g. Python 3.11, FastAPI 0.100+, PostgreSQL 1, etc.)
     - links to more detailed documentation for everything that does not fit the above
 
+Make sure that throughout the lifecycle of your project, this file stays concise and does not bury first-principle rules inside too much specifics. As explained in the state subsystem section, specific localized documentation items within your codebase should be scattered next to the code modules themselves. Basically, if you don't do that, you will end up with a weak signal to noise ration in your `AGENTS.md` file. One good tactic to mitigate this risk is to link relevant documentation in this file so that it becomes more like a map of how to find more relevant context than a complete presentaiton of the project that would bloat the context. Give overview information first, detailed information when needed. Good harness design is like good UI design — don't dump all options on the user at once. This also helps with _priority ambiguity_: when all instructions appear in the same format and location, the agent can't distinguish non-negotiable hard constraints from suggestive soft guidelines.
+
+If you're in a situation where your `AGENTS.md` file gets too big, a rule of thumb for splitting it is to keep frequently-needed information at hand, tuck away occasionally-needed information, and leave behind what you'll never use, for instance:
+- project overview
+- first-run commands
+- global hard constraints
+- links to topic documents and/or how to find them
+
+Every instruction in this subsystem should have:
+- a source ("why was this rule added?")
+- an applicability condition ("when is this rule needed?")
+- an expiry/non-applicability condition ("under what circumstances can this rule be removed?"). 
+
+Audit regularly, remove outdated, redundant, and contradictory entries in your instructions. Manage your instructions like you manage code dependencies — unused dependencies should be deleted, otherwise they just slow the system down.
+
+If an instruction must be in the entry file, put it at the top or bottom — never the middle. The "lost in the middle" effect tells us that LLMs use information at the extremes significantly better than in the center. But the better approach is to move instructions to topic documents for on-demand loading.
+
 ### the tooling subsystem
 
 Ensure the agent has sufficient tool access. Don't disable shell for "security" — if the agent can't even run `pip install`, how is it supposed to work? But don't open everything either — follow least-privilege principles.
@@ -92,6 +109,8 @@ A few guidelines to live by when setting up the state subsystem:
 - the entry file of your state subsystem (`AGENTS.md` or `CLAUDE.md`) should be concise
 - each piece of knowledge should be minimal and have a clear use-case; if removing content in a given piece of docs does not change agent's decision quality then the information is probably useless... however you should always be able to answer the _cold start_ questions easily and with speed using your agent, this is a delicate equilibrium to reach
 - docs should update with code => knowlege updates should be bound to code updates _systematically_, ideally this should be checked via the CI automatically
+
+Topic documents that are scattered throughout the codebase should be concise themselves. If they grow beyond 150 lines, maybe it's time for you to consider if you should split them. Don't forget: some information is better embedded directly in the code itself (variables naming, clearly defined interfaces, self-explanatory directory structure, comments, etc.).
 
 
 #### analogy of agent state management with ACID principles
