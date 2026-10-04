@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .types import NotesFile
+from .types import IndexFile, NotesFile
 
 
 def _store_dir() -> Path:
@@ -29,6 +29,13 @@ async def read_notes() -> NotesFile:
     except FileNotFoundError:
         # No notes imported yet.
         return {"notes": []}
+
+
+async def read_index() -> IndexFile:
+    # Unlike notes, a missing index is an error: `index` has to run before `ask`.
+    return json.loads(
+        await asyncio.to_thread((DIR / "index.json").read_text, encoding="utf-8")
+    )
 
 
 async def write_json(rel: str, data: Any) -> None:

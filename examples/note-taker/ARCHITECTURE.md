@@ -1,12 +1,12 @@
 # Architecture
 
 `note-taker` is a single Python 3.12+ CLI, managed with uv, that ingests markdown
-notes, builds a token index, and (later) answers keyword queries. It has no
+notes, builds a token index, and answers keyword queries from it. It has no
 runtime dependencies beyond the standard library.
 
 ## Layout
 
-- `cli.py` — argv dispatcher and `note-taker` entry point (`cli:main`); the only file that calls `sys.exit`.
+- `cli.py` — argv dispatcher and `note-taker` entry point (`cli:main`); the only file that calls `sys.exit`. It parses options by hand; a `--` argument ends a command's options, so every argument after it is passed on as plain input (today only `ask` takes options and free-form words).
 - `commands/<verb>.py` — one module per CLI verb, exports an async `run_<verb>(...)` that returns an exit code (`import_.py` carries a trailing underscore because `import` is a keyword).
 - `store/types.py` — `TypedDict` schemas for on-disk state.
 - `store/io.py` — read/write helpers for the `.note-taker/*.json` store.
@@ -23,7 +23,7 @@ markdown files            notes.json                       index.json
 note-taker import ───► notes (id,path,title,body,imported_at) ──► note-taker index ──► tokens
                                                                                           │
                                                                                           ▼
-                                                                                  note-taker ask (later)
+                                                                                  note-taker ask
 ```
 
 ## Boundaries

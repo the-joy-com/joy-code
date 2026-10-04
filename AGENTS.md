@@ -25,6 +25,8 @@ If baseline verification is already failing, fix that first. Do not stack new fe
 - The progress file: session log and current verified status. Which file depends on what is being worked on:
   - `harness/state/PROGRESS.md` when working on the Joy coding agent itself.
   - `harness/state/<worked-on-application>/PROGRESS.md` when working on a target application, where `<worked-on-application>` is the application's folder name (for example `harness/state/note-taker/PROGRESS.md` for `examples/note-taker`).
+
+  The progress file is a running summary, not an append-only log. When it gets bloated, or fills up with entries that matter little to the task at hand, condense it: merge or shorten older session entries and drop details the code or git history already records. Always keep the current verified state, the next step, open risks and blockers, and the full test and verification evidence for the current task.
 - `session-handoff.md`: optional compact handoff for larger sessions, next to the progress file.
 
 ## Definition Of Done
@@ -45,7 +47,7 @@ Tracking features and their state is the responsibility of the humans developing
 
 Before ending a session:
 
-1. Update the progress file.
+1. Update the progress file, condensing it first if it has grown bloated (see Required Artifacts).
 2. Record any unresolved risk or blocker.
 3. Add to git staging area modified files with a descriptive message once the work is in a safe state _then_ ask for a human to review the work.
 4. Leave the repo clean enough for the next session to run using the standard startup path.
