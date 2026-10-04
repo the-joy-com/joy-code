@@ -1,0 +1,31 @@
+# Joy Code
+
+Joy Code is a wannabee clone of [Claude Code](https://claude.com/claude-code), built using the contents of [Hands-On Harness Engineering](https://hands-on-harness-engineering.com/) as a starter, but in Python instead of Node.
+
+## Running the CLI
+
+The CLI lives in the `cli` folder and is managed with [uv](https://docs.astral.sh/uv/).
+
+### Dev mode
+
+Run the CLI from source:
+
+```bash
+cd cli && uv run joy --help
+```
+
+### Prod mode
+
+Build a standalone executable with [PyInstaller](https://pyinstaller.org/) into the root `bin` folder (intermediate build files go in `cli/build`):
+
+```bash
+cd cli && uv run pyinstaller --onefile --name joy --distpath ../bin --workpath build --specpath build src/joy/__main__.py
+```
+
+Then run the executable (no Python or uv needed):
+
+```bash
+./bin/joy --help
+```
+
+The executable only runs on the OS and CPU architecture it was built on.
