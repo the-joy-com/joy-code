@@ -19,7 +19,7 @@ cd cli && uv run joy --help
 Build a standalone executable with [PyInstaller](https://pyinstaller.org/) into the root `bin` folder (intermediate build files go in `cli/build`):
 
 ```bash
-cd cli && uv run pyinstaller --onefile --name joy --distpath ../bin --workpath build --specpath build src/joy/__main__.py
+cd cli && uv run pyinstaller --onefile --copy-metadata joy --name joy --distpath ../bin --workpath build --specpath build src/joy/__main__.py
 ```
 
 Then run the executable (no Python or uv needed):
@@ -29,3 +29,14 @@ Then run the executable (no Python or uv needed):
 ```
 
 The executable only runs on the OS and CPU architecture it was built on.
+
+## Harness
+
+The `harness` folder holds the harness we use to develop the coding agent.
+
+### Tasks
+
+`harness/tasks` holds the task specifications for the instruction subsystem. Each task is a numbered Markdown file (`1.md`, `2.md`, ...) with two sections:
+
+- **TASK**: what to build.
+- **DONE WHEN**: the commands to run, and what they must output, before the task counts as complete.

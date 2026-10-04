@@ -1,4 +1,6 @@
+import json
 import sys
+from importlib.metadata import version
 
 
 def main() -> None:
@@ -8,7 +10,16 @@ def main() -> None:
         print("joy - a tiny coding agent")
         print("")
         print("Usage:")
-        print("  joy --help        Print this help.")
+        print("  joy --help            Print this help.")
+        print("  joy version [--json]  Print the version.")
+        sys.exit(0)
+
+    if args == ["version"]:
+        print(version("joy"))
+        sys.exit(0)
+
+    if args == ["version", "--json"]:
+        print(json.dumps({"version": version("joy")}))
         sys.exit(0)
 
     print(f"unknown command: {' '.join(args)}", file=sys.stderr)
