@@ -1,5 +1,5 @@
 [project]
-name = "joy"
+name = "note-taker"
 version = "0.1.0"
 authors = [
     { name = "yactouat" }
@@ -11,14 +11,17 @@ dependencies = []
 requires = ["setuptools>=80"]
 build-backend = "setuptools.build_meta"
 
-# Flat layout: the CLI module sits at the root of this folder.
+# Flat layout: the CLI module and the store and commands packages sit at the app root.
 [tool.setuptools]
-py-modules = ["joy"]
+py-modules = ["cli"]
+packages = ["store", "commands"]
 
 [dependency-groups]
 dev = [
     "pyinstaller>=6.22.3",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
 ]
 
 [project.scripts]
-joy = "joy:main"
+note-taker = "cli:main"

@@ -44,6 +44,8 @@ In harnessing a coding agent, you'd have 5 subsystems:
 - state
 - feedback
 
+Usually, modifying a layer of the harness means adapting the other layers in some way.
+
 ### the instruction subsystem
 
 It's the one that contains the project rules, materialized by the `AGENTS.md` file.
@@ -59,17 +61,29 @@ It's the one that contains the project rules, materialized by the `AGENTS.md` fi
 
 Ensure the agent has sufficient tool access. Don't disable shell for "security" — if the agent can't even run `pip install`, how is it supposed to work? But don't open everything either — follow least-privilege principles.
 
+Usually, a tooling subsystem is expressed in terms of verbs for the coding agent.
+
 ### the running environement subsystem
 
-Environment subsystem: Make the environment state self-describing. Use `pyproject.toml` or `package.json` to lock dependencies, `.nvmrc` or `.python-version` for runtime versions, Docker or dev containers for reproducibility.
+Environment subsystem: Make the environment state self-describing and deterministic. 
+
+This can span over things like using `pyproject.toml` or `package.json` to lock dependencies, `.nvmrc` or `.python-version` for runtime versions, Docker or dev containers for reproducibility, etc.
 
 ### the state subsystem
 
-Long tasks need progress tracking. Use a simple `PROGRESS.md` file recording: what's done, what's in progress, what's blocked. This is to be updated before each session ends and to be read when the next session starts.
+Long tasks need progress tracking. This mean each task needs to produce a durable artifact that the next session can read.
+
+You can get by with a simple `PROGRESS.md` file recording: what's done, what's in progress, what's blocked. This is to be updated before each session ends and to be read when the next session starts.
 
 ### the feedback subsystem
 
-This is the highest-ROI subsystem. It should consist of a list of verification commands referenced in `AGENTS.md`. Example below
+This is the highest-ROI subsystem. It should consist of a list of verification commands referenced in `AGENTS.md`. 
+
+The feedback subsystme checks for verification signals (exit codes, stdout,` node --test output`, etc.).
+It is also constitued by plain automatic testing.
+
+
+Example below
 
 ```txt
 Verification commands:

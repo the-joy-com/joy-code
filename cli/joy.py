@@ -24,3 +24,7 @@ def main() -> None:
 
     print(f"unknown command: {' '.join(args)}", file=sys.stderr)
     sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()
