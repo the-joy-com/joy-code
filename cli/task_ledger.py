@@ -6,13 +6,20 @@ between the two is the work in progress, so with the default WIP limit of 1 a ta
 activated while VCR is 1.0. Only a human can change the limit (`wip`), and only `pass` can mark a
 task `passing`: it runs the ledger's bootstrap script itself and records the evidence.
 
+Every task starts from a spec a human approved (`add --spec`): `<instructions>/<id>.md`, whose
+TASK, SCOPE and DONE WHEN sections are fingerprinted at approval and must not change afterwards,
+and whose verification command must fail at approval and pass, with the bootstrap, at `pass`.
+`joy task` rewrites the spec's STATE and EVIDENCE sections from the ledger on every save.
+
 To keep the ledger the size of the current work, every save moves `passing` and `dropped` tasks to
 the append-only `<state>/tasks.archive.jsonl` and keeps only their counts, which is all VCR needs.
 """
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,6 +33,8 @@ IN_PROGRESS = ("active", "blocked")
 FINISHED = ("passing", "dropped")
 OUTPUT_TAIL_LINES = 3
 DEFAULT_WIP_LIMIT = 1
+SPEC_SECTIONS = ("TASK", "SCOPE", "DONE WHEN", "STATE", "EVIDENCE")
+FROZEN_END = "\n## STATE\n"
 
 
 class LedgerError(Exception):
@@ -42,6 +51,16 @@ def ledger_path(state: str) -> Path:
 
 def archive_path(state: str) -> Path:
     return Path(state) / "tasks.archive.jsonl"
+
+
+def instructions_dir(state: str) -> Path:
+    # The instructions folder mirrors the state folder: harness/state/<app> -> harness/instructions/<app>.
+    parts = list(Path(state).parts)
+    if "state" not in parts:
+        raise LedgerError(f"cannot find the instructions folder of {state}: it has no `state` folder")
+    i = len(parts) - 1 - parts[::-1].index("state")
+    parts[i] = "instructions"
+    return Path(*parts)
 
 
 def task_number(tid: str) -> int:
@@ -82,6 +101,10 @@ def validate(ledger: dict) -> list[str]:
             errors.append(f"{tid}: dropped without a reason")
         if state == "passing" and (task.get("evidence") or {}).get("exit_code") != 0:
             errors.append(f"{tid}: passing without evidence of a successful bootstrap run")
+        if state == "passing" and "spec" in task and (
+            ((task.get("evidence") or {}).get("verification") or {}).get("exit_code") != 0
+        ):
+            errors.append(f"{tid}: passing without evidence of a successful verification command")
     in_progress = [t["id"] for t in tasks if isinstance(t, dict) and t.get("state") in IN_PROGRESS]
     if len(in_progress) > wip_limit:
         errors.append(f"WIP={wip_limit} broken: {', '.join(in_progress)} are all active or blocked")
@@ -117,6 +140,9 @@ def archived_ids(state: str) -> list[str]:
 
 def save(state: str, ledger: dict) -> None:
     path = ledger_path(state)
+    for t in ledger["tasks"]:
+        if "spec" in t:
+            write_spec_tail(state, t)
     finished = [t for t in ledger["tasks"] if t["state"] in FINISHED]
     if finished:
         # Archive first: a crash in between can duplicate an archive line but never lose a task.
@@ -164,6 +190,90 @@ def require_state(task: dict, *states: str) -> None:
         raise LedgerError(f"{task['id']} is {task['state']}, expected {' or '.join(states)}")
 
 
+def fingerprint(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def frozen_part(text: str) -> str:
+    # Everything above STATE (title, TASK, SCOPE, DONE WHEN) is what the human approved.
+    return text.split(FROZEN_END, 1)[0]
+
+
+def parse_draft(text: str) -> tuple[str, str, str]:
+    """Check a spec draft and return its title, its frozen body below the title and its verification command."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.startswith("# ")), None)
+    if start is None:
+        raise LedgerError("the draft has no `# <title>` heading")
+    title = lines[start][2:].strip()
+    body = "\n".join(lines[start + 1:]) + "\n"
+    names = re.findall(r"^## (.+?)\s*$", body, flags=re.M)
+    if tuple(names) != SPEC_SECTIONS:
+        raise LedgerError(f"the draft must have the sections {', '.join(SPEC_SECTIONS)} in this order, not {', '.join(names) or 'none'}")
+    frozen = frozen_part("# " + title + "\n" + body)
+    prose = re.sub(r"^```.*?^```", "", frozen, flags=re.M | re.S)
+    placeholders = re.findall(r"<[^<>\n]+>", prose)
+    if placeholders:
+        raise LedgerError(f"the draft still has placeholders: {', '.join(placeholders)}")
+    sections = dict(zip(names, re.split(r"^## .+$", body, flags=re.M)[1:]))
+    if not sections["TASK"].strip():
+        raise LedgerError("the draft's TASK section is empty")
+    if not re.search(r"^- \S", sections["SCOPE"], flags=re.M):
+        raise LedgerError("the draft's SCOPE section must list the files the task may change, one `- ` item each")
+    commands = re.findall(r"^```bash\n(.*?)^```", sections["DONE WHEN"], flags=re.M | re.S)
+    if len(commands) != 1 or not commands[0].strip():
+        raise LedgerError("the draft's DONE WHEN section must hold exactly one ```bash verification command block")
+    return title, frozen.split("\n", 1)[1], commands[0].strip()
+
+
+def run_command(command: list[str]) -> dict:
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    return {"exit_code": result.returncode, "ran_at": now(), "output_tail": result.stdout.splitlines()[-OUTPUT_TAIL_LINES:]}
+
+
+def run_verification(task: dict) -> dict:
+    return {"command": task["spec"]["verify"], **run_command(["bash", "-c", task["spec"]["verify"]])}
+
+
+def check_spec(task: dict) -> None:
+    path = Path(task["spec"]["path"])
+    if not path.is_file() or fingerprint(frozen_part(path.read_text())) != task["spec"]["sha256"]:
+        raise LedgerError(
+            f"{path} changed since it was approved (TASK, SCOPE or DONE WHEN): restore it, "
+            f"or ask a human to drop {task['id']} and approve a new draft"
+        )
+
+
+def write_spec_tail(state: str, task: dict) -> None:
+    path = Path(task["spec"]["path"])
+    if not path.is_file():
+        return
+    lines = [
+        f"- Ledger: `{ledger_path(state)}`, task `{task['id']}`",
+        f"- Current state: `{task['state']}`",
+    ]
+    if task.get("blocker"):
+        lines.append(f"- Blocker: {task['blocker']}")
+    if task.get("dropped_reason"):
+        lines.append(f"- Dropped: {task['dropped_reason']}")
+    evidence = [("Before", task["before"])]
+    if "evidence" in task:
+        evidence.append(("After", {**task["evidence"]["verification"], "commit": task["evidence"]["commit"]}))
+    out = []
+    for label, run in evidence:
+        commit = f", commit `{run['commit']}`" if run.get("commit") else ""
+        summary = f"- {label} ({run['ran_at']}{commit}): the verification command exited {run['exit_code']}"
+        if not any(line.strip() for line in run["output_tail"]):
+            out += [f"{summary}, with no output", ""]
+            continue
+        out += [summary, "", "  ```text", *(f"  {line}" for line in run["output_tail"]), "  ```", ""]
+    path.write_text(
+        frozen_part(path.read_text()) + FROZEN_END
+        + "\nWritten by `joy task` from the ledger on every change: do not edit.\n\n" + "\n".join(lines)
+        + "\n\n## EVIDENCE\n\n" + "\n".join(out).rstrip() + "\n"
+    )
+
+
 def head_commit() -> str | None:
     result = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
     return result.stdout.strip() if result.returncode == 0 else None
@@ -187,11 +297,34 @@ def cmd_init(args) -> int:
 
 def cmd_add(args) -> int:
     ledger = load(args.state)
+    draft = Path(args.spec)
+    if not draft.is_file():
+        raise LedgerError(f"no draft at {draft}")
+    drafts = instructions_dir(args.state) / "drafts"
+    if draft.resolve().parent != drafts.resolve():
+        raise LedgerError(f"{draft} is not in the drafts folder of {args.state}: write it directly inside {drafts}")
+    title, body, verify = parse_draft(draft.read_text())
     tid = f"T-{ledger['next_id']}"
+    frozen = f"# {tid}. {title}\n{body}"
+    print(frozen)
+    print(f"==> approving makes this {tid}; the verification command above then runs and must fail")
+    # Only humans approve: a spec decides what "done" means for the task.
+    confirm_by_human(tid, "to approve this task", "add")
+    task = {"id": tid, "title": title, "state": "not_started", "added_at": now()}
+    task["spec"] = {"path": str(instructions_dir(args.state) / f"{tid}.md"), "sha256": fingerprint(frozen), "verify": verify}
+    before = run_verification(task)
+    print("\n".join(before["output_tail"]))
+    if before["exit_code"] == 0:
+        raise LedgerError("the verification command already passes, so it cannot prove the work; nothing changed")
+    task["before"] = before
+    spec = Path(task["spec"]["path"])
+    spec.parent.mkdir(parents=True, exist_ok=True)
+    spec.write_text(frozen + FROZEN_END)
     ledger["next_id"] += 1
-    ledger["tasks"].append({"id": tid, "title": args.title, "state": "not_started", "added_at": now()})
+    ledger["tasks"].append(task)
     save(args.state, ledger)
-    print(f"added {tid} (not_started): {args.title}")
+    draft.unlink()
+    print(f"added {tid} (not_started): {title}, spec in {spec}")
     return 0
 
 
@@ -199,6 +332,10 @@ def cmd_activate(args) -> int:
     ledger = load(args.state)
     task = find(ledger, args.id)
     require_state(task, "not_started", "blocked")
+    if "spec" in task:
+        check_spec(task)
+    elif task["state"] == "not_started":
+        raise LedgerError(f"{task['id']} has no approved spec; ask a human to approve one with joy task add --spec")
     # The gate: once the task being (re)activated is set aside, the work in progress
     # (activated - passing) must be under the WIP limit. With WIP=1 that means VCR is 1.0, so
     # resuming a blocked task is allowed but starting a second one is not.
@@ -262,23 +399,28 @@ def cmd_pass(args) -> int:
     ledger = load(args.state)
     task = find(ledger, args.id)
     require_state(task, "active")
+    if "spec" in task:
+        check_spec(task)
     command = ledger["bootstrap"]
     print(f"==> running {command} for {task['id']}")
-    result = subprocess.run([command], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    output = result.stdout.splitlines()
-    if result.returncode != 0:
-        print("\n".join(output[-OUTPUT_TAIL_LINES:]), file=sys.stderr)
-        print(f"refused: {command} exited {result.returncode}; {task['id']} stays active", file=sys.stderr)
+    bootstrap = {"command": command, **run_command([command])}
+    if bootstrap["exit_code"] != 0:
+        print("\n".join(bootstrap["output_tail"]), file=sys.stderr)
+        print(f"refused: {command} exited {bootstrap['exit_code']}; {task['id']} stays active", file=sys.stderr)
         return 1
+    evidence = {**bootstrap, "commit": head_commit()}
+    # Tasks added before specs existed only have the bootstrap to pass.
+    if "spec" in task:
+        print(f"==> running the verification command of {task['id']}")
+        verification = run_verification(task)
+        if verification["exit_code"] != 0:
+            print("\n".join(verification["output_tail"]), file=sys.stderr)
+            print(f"refused: the verification command exited {verification['exit_code']}; {task['id']} stays active", file=sys.stderr)
+            return 1
+        evidence["verification"] = verification
     task["state"] = "passing"
-    task["passed_at"] = now()
-    task["evidence"] = {
-        "command": command,
-        "exit_code": 0,
-        "ran_at": task["passed_at"],
-        "commit": head_commit(),
-        "output_tail": output[-OUTPUT_TAIL_LINES:],
-    }
+    task["passed_at"] = evidence["ran_at"]
+    task["evidence"] = evidence
     save(args.state, ledger)
     print(f"{task['id']} is passing")
     return 0
@@ -320,8 +462,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("init", parents=[common], help="create the ledger")
     p.add_argument("--bootstrap", required=True, help="bootstrap script `pass` runs, e.g. ./init.sh")
     p.set_defaults(func=cmd_init)
-    p = sub.add_parser("add", parents=[common], help="add a not_started task")
-    p.add_argument("title")
+    p = sub.add_parser("add", parents=[common], help="approve a spec draft as a not_started task (humans only: asks to type the new id at an interactive terminal)")
+    p.add_argument("--spec", required=True, help="spec draft based on instruction_template.md; becomes <instructions>/<id>.md")
     p.set_defaults(func=cmd_add)
     p = sub.add_parser("activate", parents=[common], help="activate a task (refused at the WIP limit, VCR < 1.0 with WIP=1)")
     p.add_argument("id")

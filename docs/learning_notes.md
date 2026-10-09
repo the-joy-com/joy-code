@@ -16,7 +16,7 @@
     - Verification Gap: The gap between the agent's confidence in its output and actual correctness. The agent says "I'm done" when it's not done — this is the most common failure mode.
 - **Harness** definition: Everything outside the model — instructions, tools, environment, state management, verification feedback. If it's not model weights, it's harness.
 - In harness engineering, a diagnostic loop consists of executing, observing, and attributing the failure to one of the 5 harness layers, to fix that layer, and to re-execute.
-- In harness engineering, a system of record (SoR) is the central, authoritative data source that serves as the "single source of truth" for a project. This is absolutely mandatory for an AI coding agent: the repository at hand should be the self-contained source of information on how to build stuff. It's called the "repo as spec" principle.
+- In harness engineering, a system of record (SoR) is the central, authoritative data source that serves as the "single source of truth" for a project. This is absolutely mandatory for an AI coding agent: the repository at hand should be the self-contained source of information on how to build stuff. It's called the "repo as spec" principle. You should be particularly mindful of not having contradictions in this source of truth.
 - one good methodology in testing harness quality is to stay "iso-model", meaning, don't swap models to get better results, improve each subsystem to the max before deciding to upgrade the model; also one good approach in improving a harness is to distinguish between:
     - "gulf of execution": agent does not know _how_ to do something
     - "gulf of verification": agent does not if what it built is _right_
@@ -186,6 +186,7 @@ Verification commands:
 
 ## lifecycle of an AI agent-driven coding project
 
+
 ### initialization VS implementation
 
 _The implementation phase_ of a coding project optimizes for: maximizing the quantity and quality of verified features while the _initialization phase_ optimizes for: maximizing the reliability and efficiency of all subsequent implementation. Initialization builds the environment, instructions and feedback loop, and implementation runs tooling and feedback while keeping state up to date.
@@ -211,6 +212,7 @@ Here is a mental model for this, regrouping 6 concepts =>
 - **Handoff Readiness**: The project is in a state at any given moment where a fresh agent can take over. No verbal explanation needed — just repo contents.
 - **Time to First Verification**: The time from project start until the first feature point passes verification. This is the core metric for measuring initialization efficiency.
 - **Downstream Usability**: The best measure of initialization quality — the proportion of subsequent sessions that can successfully execute tasks without relying on implicit knowledge.
+
 
 ### principles for a successful initialization
 
@@ -258,9 +260,41 @@ Initialization's output isn't code, it's infrastructure: runnable environment, v
 ### principes of a successful implementation
 
 
+#### definition of done
+
+A coding agent should know exactly what "done" means for a given task before starting it. The general Definition of Done (tests pass, lint is clean, ...) is necessary but not sufficient: each task needs its own acceptance criteria, stated so they can be checked by a command. Otherwise the agent fills the gap with its own idea of "done", and the verification gap opens.
+
+"Done" should cover two dimensions:
+- technical
+- functional
+
+A functional definition of done (a _primitive_ in our system) is incomplete if it does not have a:
+- behavior description
+- current state
+- verification command
+
+Such definitions of done must be able to be checked mechanically, this is why they are called _primitives_. This is the only way a task list goes beyond _documentation_ and becomes a _machine-executable contract_.
+
+### state transitions
+
+Such functional items are state-machine liked and can only have four states:
+- `not_started`
+- `active`
+- `blocked`
+- `passing`: the only way an item can move to that state is the verification command, and the `passing` state is irreversible
+
+- A good coding agent harness has 4 components:
+    - the scheduler: reads the state of the project, picks the next _not started_ item
+    - the verifier, decides state transitions between functional items
+    - the handoff reporter
+    - the progress tracker
+
+You should let the harness (instead of the agent) control state transitions; i.e., the agent should only be able to request to run the verification command in order to move an item to `passing`.
+
+
 ### attention is a finite resource
 
-This isn't a metaphor — it's math. Assume the agent's context capacity is C and it activates k tasks simultaneously. Each task gets an average of C/k reasoning resources. When C/k drops below the minimum threshold needed to complete a single task, none of them get finished. Your stomach is only so big — stuff ten dumplings in at once and you won't digest them all, you'll just get ten cases of indigestion.
+This isn't a metaphor — it's math. Assume the agent's context capacity is C and it activates k tasks simultaneously. Each task gets an average of C/k reasoning resources. When C/k drops below the minimum threshold needed to complete a single task, none of them get finished.
 
 See illustration below:
 
