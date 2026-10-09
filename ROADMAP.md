@@ -24,6 +24,7 @@ What is recorded: each file accepted on intent, with the reviewer's reason, goes
 
 Why: files mode refuses small, useful changes that a SCOPE written in advance could not foresee, such as a shared helper or a test fixture, and each one costs a dropped task and a new draft. The cost: this mode is weaker than files mode. It trades a mechanical check for a judgment that can be wrong, or be argued with in the code itself, which is why it is opt-in, set by a human, and recorded.
 
+
 ## Interactive integrations: Claude Code and OpenCode
 
 Today the overlay is passive: the coding tool reads `AGENTS.md`, and the routine (clock in, task status, drafts, clock out) only happens if the agent follows the text, or if the human types the `joy task` commands. An integration makes that routine part of the tool itself, so the human and the agent see the task state and the next step without asking for them, and the rules that matter most hold even when the agent forgets them.
@@ -37,3 +38,13 @@ Today the overlay is passive: the coding tool reads `AGENTS.md`, and the routine
 2) OpenCode integration, with the same routine through OpenCode's own extension points: custom commands for `/clock-in`, `/task-status`, `/draft-task` and `/clock-out`, a plugin reacting to tool execution events for the same refusals as the Claude Code hooks, and permission rules in its configuration that deny the human-only commands.
 
 What stays the same: `AGENTS.md` stays the single entry point and `joy task` stays the single way to change the ledger. The integrations call them; they never copy their rules, so a rule changes in one place only. A coding tool without an integration keeps working with `AGENTS.md` alone.
+
+## Claude Code clone
+
+A coding agent of the overlay's own: a Claude Code clone written in Python and run through the `joy` CLI. It is a terminal coding agent in the spirit of Claude Code: an agent loop that sends the conversation to a model, runs the tools the model asks for (read a file, edit or write a file, run a shell command, search the code) and loops until the work is done, with the human able to approve or refuse each tool call.
+
+Why: the other coding tools only follow the overlay as far as their extension points allow (see the integrations above). An agent built for the overlay makes the routine native: it clocks in by itself, knows the active task and its SCOPE, and enforces the permission rules in its own loop, where the agent cannot reach them.
+
+Which models: it is not tied to one provider. It talks to any model behind a common chat API, so a team can pick a hosted or a self-hosted model.
+
+What stays the same: it is one coding tool among others. It reads `AGENTS.md` like any other tool, changes the ledger only through `joy task`, and the overlay keeps working with Claude Code, Codex, Cursor or OpenCode without it.
