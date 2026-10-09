@@ -1,6 +1,33 @@
 # Joy Code
 
-Joy Code is a wannabee clone of [Claude Code](https://claude.com/claude-code), built using the contents of [Hands-On Harness Engineering](https://hands-on-harness-engineering.com/) as a starter, but in Python instead of Node.
+Joy Code is a harness overlay for AI-assisted coding tools such as Claude Code, Codex, Cursor or OpenCode. It does not replace your coding tool: it sits on top of it, so that long-running agent work leaves the repository in a state the next session, or the next human, can pick up without guessing.
+
+Its entry point is [`AGENTS.md`](AGENTS.md). Your coding tool reads it at the start of every session, and it routes the agent through the rest of the overlay:
+
+- a **clock in and clock out routine**: run the bootstrap script, read the progress, decisions and handoff files, verify before ending a session and leave the work staged for a human review;
+- **human-approved specs**: the agent drafts each task, with its TASK, SCOPE and DONE WHEN, and only a human turns a draft into a task;
+- a **task ledger** managed by the `joy` CLI (in `cli/`), with a WIP limit and a Verified Completion Rate gate, so a task only starts once the previous one passed;
+- **checks the agent cannot argue with**: a spec fingerprint so the definition of done cannot be weakened during the work, a SCOPE check so the work stays within the files the human approved, and a verification command whose output is recorded as evidence.
+
+Copy the overlay (`AGENTS.md`, `CLAUDE.md`, `BOOTSTRAP.md`, `instruction_template.md`, `init.sh`, `cli/` and `harness/`) into your repository to use it.
+
+## Use it with your coding agent
+
+Coding tools that read `AGENTS.md` natively, such as Codex, Cursor or OpenCode, use the overlay as is. Claude Code reads `CLAUDE.md` instead: the one in this repository holds the single line `@AGENTS.md`, so it loads the same rules. Whatever the tool, the human-only steps (`joy task add`, `joy task drop`, `joy task wip`) stay in a terminal the human types in.
+
+## Use it with your application
+
+Each application gets its own folder, ledger and specs, next to the harness's own:
+
+1. Put the application in its own folder, for example `my-app/`.
+2. Give it an `init.sh` that installs its locked dependencies and checks it can start and be tested, and a `BOOTSTRAP.md` that documents that contract and the application's install, start and test commands (see [`BOOTSTRAP.md`](BOOTSTRAP.md) for the harness's own).
+3. Create its task ledger once, from the repository root:
+
+   ```bash
+   uv run --locked --project cli joy task init --state harness/state/my-app --bootstrap my-app/init.sh
+   ```
+
+4. Ask your coding agent for a change. It writes a spec draft in `harness/instructions/my-app/drafts/`, and you approve it with `joy task add --spec` (see Tasks below).
 
 ## Bootstrap
 
@@ -10,7 +37,7 @@ On a fresh clone, and at the start of every coding-agent session, run:
 ./init.sh
 ```
 
-It installs the locked dependencies and checks that Joy can start and be tested. See [`BOOTSTRAP.md`](BOOTSTRAP.md) for its contract and exit codes.
+It installs the locked dependencies and checks that the `joy` CLI can start and be tested. See [`BOOTSTRAP.md`](BOOTSTRAP.md) for its contract and exit codes.
 
 ## Running the CLI
 
@@ -48,11 +75,11 @@ Tests use [pytest](https://docs.pytest.org/), a uv dev dependency. Run the suite
 cd cli && uv run pytest
 ```
 
-This is Joy's verification check. For now `cli/test_suite.py` only proves the suite runs.
+This is the harness's own verification check. For now `cli/test_suite.py` only proves the suite runs.
 
 ## Harness
 
-The `harness` folder holds the harness we use to develop the coding agent.
+The `harness` folder holds the state and the specs of every task ledger: the harness's own, at its root, and one per application.
 
 [`AGENTS.md`](AGENTS.md) holds the rules coding agents follow in this repository: the startup workflow, the working rules, the progress files, the definition of done and the end-of-session steps.
 
@@ -92,7 +119,7 @@ stateDiagram-v2
 - **STATE**: the task's current state, written by `joy task`.
 - **EVIDENCE**: the verification command's output when the spec was approved and when the task passed, written by `joy task`.
 
-A human approves a draft with `joy task add --spec <draft>`. Joy then runs the verification command and refuses the draft if it already passes, since such a check cannot prove the work. It fingerprints TASK, SCOPE and DONE WHEN, and `joy task activate` and `joy task pass` refuse to run once they changed, so the definition of done cannot be weakened during the work.
+A human approves a draft with `joy task add --spec <draft>`. `joy task` then runs the verification command and refuses the draft if it already passes, since such a check cannot prove the work. It fingerprints TASK, SCOPE and DONE WHEN, and `joy task activate` and `joy task pass` refuse to run once they changed, so the definition of done cannot be weakened during the work.
 
 From a request to a passing task, the agent, the human and `joy task` each do their part:
 
@@ -129,15 +156,15 @@ The instructions folder mirrors the state folder, so each application has its ow
 ```mermaid
 flowchart LR
     subgraph state["harness/state/"]
-        SJ["tasks.json, tasks.archive.jsonl,<br/>PROGRESS.md, DECISIONS.md<br/>(Joy itself)"]
-        SA["note-taker/<br/>the same files<br/>(target application)"]
+        SJ["tasks.json, tasks.archive.jsonl,<br/>PROGRESS.md, DECISIONS.md<br/>(the harness itself)"]
+        SA["my-app/<br/>the same files<br/>(target application)"]
     end
     subgraph instructions["harness/instructions/"]
-        IJ["T-1.md, T-2.md, ...<br/>drafts/<br/>(Joy itself)"]
-        IA["note-taker/<br/>T-1.md, ...<br/>drafts/"]
+        IJ["T-1.md, T-2.md, ...<br/>drafts/<br/>(the harness itself)"]
+        IA["my-app/<br/>T-1.md, ...<br/>drafts/"]
     end
     SJ -- "--state harness/state" --> IJ
-    SA -- "--state harness/state/note-taker" --> IA
+    SA -- "--state harness/state/my-app" --> IA
 ```
 
 #### Spec fingerprint
@@ -179,7 +206,3 @@ refused: T-n changed files outside its SCOPE since it was activated: docs/x.md. 
 **How to recover.** Undo the changes outside SCOPE, and write a draft for them if they are worth doing. When the task really needs them, its SCOPE is wrong: a human drops the task and approves a new draft. When a human made the change during the task, ask a human too.
 
 **Its limits.** The check sees files, not intent: any change to a file in SCOPE passes it, which is what the verification command and the human review are for. Tasks approved or activated before the check existed have no SCOPE copy or baseline, and `pass` skips the check for them.
-
-## Examples
-
-The `examples` folder is meant to hold example applications built with the Joy coding agent and its harness.

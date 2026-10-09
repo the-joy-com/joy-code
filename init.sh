@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap for the Joy coding agent. Contract: BOOTSTRAP.md. Idempotent.
+# Bootstrap for the harness itself (the joy CLI). Contract: BOOTSTRAP.md. Idempotent.
 set -uo pipefail
 cd "$(dirname "$0")"
 

@@ -1,6 +1,6 @@
 # Instruction template
 
-Every task in a Joy task ledger starts from a spec based on this template. Copy everything below the line into a draft in the drafts folder: `harness/instructions/drafts/<name>.md` for the Joy coding agent itself, `harness/instructions/<worked-on-application>/drafts/<name>.md` for a target application (for example `harness/instructions/note-taker/drafts/`). Replace every `<...>` placeholder and keep the sections in this order. Then ask a human to approve it, from the repository root:
+Every task in a `joy` task ledger starts from a spec based on this template. Copy everything below the line into a draft in the drafts folder: `harness/instructions/drafts/<name>.md` for the harness itself, `harness/instructions/<worked-on-application>/drafts/<name>.md` for a target application (for example `harness/instructions/my-app/drafts/`). Replace every `<...>` placeholder and keep the sections in this order. Then ask a human to approve it, from the repository root:
 
 ```bash
 uv run --locked --project cli joy task add --spec harness/instructions/drafts/<name>.md --state harness/state

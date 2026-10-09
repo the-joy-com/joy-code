@@ -1,8 +1,8 @@
 # Bootstrap
 
-`./init.sh` is the only supported way to bring a fresh clone of the Joy coding agent to a verified start. Run it from anywhere; it works from the repository root. It is idempotent: it installs dependencies from `cli/uv.lock` without rewriting it, so a second run changes nothing and `git status` stays clean. It needs [uv](https://docs.astral.sh/uv/) and should finish in under three minutes.
+`./init.sh` is the only supported way to bring the harness, freshly cloned, to a verified start. Run it from anywhere; it works from the repository root. It is idempotent: it installs dependencies from `cli/uv.lock` without rewriting it, so a second run changes nothing and `git status` stays clean. It needs [uv](https://docs.astral.sh/uv/) and should finish in under three minutes.
 
-It only bootstraps Joy itself. Each target application has its own `init.sh` and `BOOTSTRAP.md` (for example `examples/note-taker/`).
+It only bootstraps the harness itself. Each target application has its own `init.sh` and `BOOTSTRAP.md` (for example `my-app/`).
 
 ## Contract
 

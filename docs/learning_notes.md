@@ -273,7 +273,18 @@ A functional definition of done (a _primitive_ in our system) is incomplete if i
 - current state
 - verification command
 
-Such definitions of done must be able to be checked mechanically, this is why they are called _primitives_. This is the only way a task list goes beyond _documentation_ and becomes a _machine-executable contract_.
+Such definitions of done must be able to be checked mechanically, this is why they are called _primitives_. This is the only way a task list goes beyond _documentation_ and becomes a _machine-executable contract_. However; just because the verification process is machine-executable does not make it less functional, i.e. e2e tests must be run by the agent and the tools at its disposal (for instance Playwright) to check that everything works as expected.
+
+
+Runtime feedback signals like logs, process states, health checks from program execution etc. are the harness's objective basis for judging completion quality — they are not optional debugging tools.
+
+Ideally, your harness verification step should have 3 layers:
+- Syntax and static analysis. Lowest cost, least information, but must pass.
+- Runtime behavior verification. Test execution, application startup checks, critical path verification. This is the core completion evidence.
+- System-level validation. End-to-end tests, integration verification, user scenario simulation. The last line of defense against premature declarations.
+
+OpenAI's Codex practice highlights a particularly effective pattern: error messages written for agents should include repair guidance. Don't use "Test failed" — use "Test failed: POST /api/reset-password returned 500. Check that the email service config exists in environment variables. The template file should be at templates/reset-email.html." This specific, actionable feedback lets the agent self-correct without human intervention.
+
 
 ### state transitions
 

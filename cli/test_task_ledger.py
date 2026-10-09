@@ -471,7 +471,7 @@ def test_a_task_without_a_spec_cannot_be_started(state, capsys):
 
 @pytest.mark.parametrize("state_dir, instructions", [
     ("harness/state", "harness/instructions"),
-    ("harness/state/note-taker", "harness/instructions/note-taker"),
+    ("harness/state/my-app", "harness/instructions/my-app"),
 ])
 def test_instructions_folder_mirrors_the_state_folder(state_dir, instructions):
     assert task_ledger.instructions_dir(state_dir) == task_ledger.Path(instructions)
@@ -490,17 +490,17 @@ def test_add_refuses_a_draft_outside_the_drafts_folder(state, tmp_path, monkeypa
 
 
 def test_add_accepts_a_draft_in_the_application_drafts_folder(tmp_path, monkeypatch):
-    app_state = str(tmp_path / "state" / "note-taker")
+    app_state = str(tmp_path / "state" / "my-app")
     assert run(app_state, "init", "--bootstrap", "./init.sh") == 0
-    path = draft(tmp_path, "first", folder="instructions/note-taker/drafts")
+    path = draft(tmp_path, "first", folder="instructions/my-app/drafts")
     type_at_terminal(monkeypatch, "T-1")
     assert run(app_state, "add", "--spec", path) == 0
-    assert (tmp_path / "instructions" / "note-taker" / "T-1.md").exists()
-    assert not (tmp_path / "instructions" / "note-taker" / "drafts" / "first.md").exists()
+    assert (tmp_path / "instructions" / "my-app" / "T-1.md").exists()
+    assert not (tmp_path / "instructions" / "my-app" / "drafts" / "first.md").exists()
 
 
 def test_add_refuses_another_applications_drafts_folder(state, tmp_path, monkeypatch):
-    path = draft(tmp_path, "first", folder="instructions/note-taker/drafts")
+    path = draft(tmp_path, "first", folder="instructions/my-app/drafts")
     type_at_terminal(monkeypatch, "T-1")
     assert run(state, "add", "--spec", path) == 1
     assert ledger(state)["tasks"] == []

@@ -12,7 +12,7 @@ def main() -> None:
         sys.exit(task_ledger.main(args[1:]))
 
     if not args or "--help" in args or "-h" in args:
-        print("joy - a tiny coding agent")
+        print("joy - a harness overlay for AI-assisted coding tools")
         print("")
         print("Usage:")
         print("  joy --help            Print this help.")
