@@ -1,9 +1,24 @@
 import io
 import json
+import subprocess
 
 import pytest
 
 import task_ledger
+
+
+@pytest.fixture(autouse=True)
+def repo(tmp_path, monkeypatch):
+    """The git repository the work happens in; the ledger and the specs live outside it, in tmp_path."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    monkeypatch.chdir(repo)
+    return repo
+
+
+def git(repo, *args):
+    subprocess.run(["git", "-c", "user.name=joy", "-c", "user.email=joy@example.com", *args], cwd=repo, check=True, capture_output=True)
 
 
 @pytest.fixture
@@ -509,3 +524,114 @@ def test_evidence_without_output_keeps_the_block_of_a_command_that_prints(state,
     assert "with no output" not in evidence
     assert "```text" in evidence
     assert "  checking first" in evidence
+
+
+def add_with_scope(state, tmp_path, monkeypatch, scope, title="first"):
+    type_at_terminal(monkeypatch, f"T-{task_ledger.load(state)['next_id']}")
+    assert run(state, "add", "--spec", draft(tmp_path, title, SCOPE=scope)) == 0
+    finish_work(tmp_path, title)
+
+
+def test_pass_refuses_files_changed_outside_scope(state, tmp_path, monkeypatch, repo, capsys):
+    add_with_scope(state, tmp_path, monkeypatch, "- `src/app.py`")
+    assert task(state, "T-1")["spec"]["scope"] == ["src/app.py"]
+    run(state, "activate", "T-1")
+    (repo / "src").mkdir()
+    (repo / "src" / "app.py").write_text("in scope\n")
+    (repo / "notes.md").write_text("outside scope\n")
+    (repo / "src" / "other.py").write_text("outside scope too\n")
+    assert run(state, "pass", "T-1") == 1
+    err = capsys.readouterr().err
+    assert "T-1 changed files outside its SCOPE since it was activated: notes.md, src/other.py" in err
+    assert "bootstrap ran" not in err
+    assert task(state, "T-1")["state"] == "active"
+    (repo / "notes.md").unlink()
+    (repo / "src" / "other.py").unlink()
+    assert run(state, "pass", "T-1") == 0
+
+
+def test_pass_accepts_changes_inside_scope_files_and_folders_outside_scope_untouched(state, tmp_path, monkeypatch, repo):
+    add_with_scope(state, tmp_path, monkeypatch, "- `src/` the whole folder\n- `./README.md`")
+    run(state, "activate", "T-1")
+    (repo / "src" / "deep").mkdir(parents=True)
+    (repo / "src" / "deep" / "app.py").write_text("x\n")
+    (repo / "README.md").write_text("x\n")
+    assert run(state, "pass", "T-1") == 0
+
+
+def test_a_folder_scope_does_not_cover_a_file_sharing_its_prefix_outside_scope(state, tmp_path, monkeypatch, repo):
+    add_with_scope(state, tmp_path, monkeypatch, "- `src/`")
+    run(state, "activate", "T-1")
+    (repo / "src.py").write_text("x\n")
+    assert run(state, "pass", "T-1") == 1
+
+
+def test_changes_from_before_activation_count_outside_scope_only_when_touched_again(state, tmp_path, monkeypatch, repo, capsys):
+    (repo / "tracked.md").write_text("committed\n")
+    git(repo, "add", "tracked.md")
+    git(repo, "commit", "-q", "-m", "init")
+    (repo / "tracked.md").write_text("someone else's edit\n")
+    (repo / "untracked.md").write_text("someone else's file\n")
+    add_with_scope(state, tmp_path, monkeypatch, "- `src/app.py`")
+    run(state, "activate", "T-1")
+    assert run(state, "pass", "T-1") == 0
+
+    add_with_scope(state, tmp_path, monkeypatch, "- `src/app.py`", title="second")
+    run(state, "activate", "T-2")
+    (repo / "untracked.md").write_text("edited during the task\n")
+    git(repo, "checkout", "--", "tracked.md")
+    assert run(state, "pass", "T-2") == 1
+    assert "outside its SCOPE since it was activated: tracked.md, untracked.md" in capsys.readouterr().err
+
+
+def test_deleted_and_committed_files_count_outside_scope(state, tmp_path, monkeypatch, repo, capsys):
+    for name in ("gone.md", "kept.md"):
+        (repo / name).write_text("committed\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "init")
+    add_with_scope(state, tmp_path, monkeypatch, "- `src/app.py`")
+    run(state, "activate", "T-1")
+    (repo / "gone.md").unlink()
+    (repo / "kept.md").write_text("changed and committed\n")
+    git(repo, "commit", "-q", "-am", "work")
+    assert run(state, "pass", "T-1") == 1
+    assert "outside its SCOPE since it was activated: gone.md, kept.md" in capsys.readouterr().err
+
+
+def test_resuming_a_blocked_task_keeps_its_outside_scope_baseline(state, tmp_path, monkeypatch, repo):
+    add_with_scope(state, tmp_path, monkeypatch, "- `src/app.py`")
+    run(state, "activate", "T-1")
+    (repo / "notes.md").write_text("outside scope\n")
+    run(state, "block", "T-1", "--reason", "stuck")
+    run(state, "activate", "T-1")
+    assert run(state, "pass", "T-1") == 1
+
+
+def test_outside_scope_check_needs_a_path_per_scope_item(state, tmp_path, monkeypatch, capsys):
+    path = draft(tmp_path, "first", SCOPE="- `cli/task_ledger.py`\n- the tests")
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    assert run(state, "add", "--spec", path) == 1
+    err = capsys.readouterr().err
+    assert "- the tests" in err and "needs a human" not in err
+    assert ledger(state)["tasks"] == []
+
+
+def test_outside_scope_check_needs_a_git_repository(state, tmp_path, monkeypatch, capsys):
+    add_with_scope(state, tmp_path, monkeypatch, "- `src/app.py`")
+    outside = tmp_path / "not-a-repo"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    assert run(state, "activate", "T-1") == 1
+    assert "git repository" in capsys.readouterr().err
+    assert task(state, "T-1")["state"] == "not_started"
+
+
+def test_tasks_without_a_scope_copy_skip_the_outside_scope_check(state, tmp_path, add, repo):
+    add("first")
+    data = ledger(state)
+    del data["tasks"][0]["spec"]["scope"]
+    task_ledger.ledger_path(state).write_text(json.dumps(data))
+    run(state, "activate", "T-1")
+    (repo / "notes.md").write_text("outside scope\n")
+    assert run(state, "pass", "T-1") == 0

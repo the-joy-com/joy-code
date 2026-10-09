@@ -9,6 +9,7 @@ task `passing`: it runs the ledger's bootstrap script itself and records the evi
 Every task starts from a spec a human approved (`add --spec`): `<instructions>/<id>.md`, whose
 TASK, SCOPE and DONE WHEN sections are fingerprinted at approval and must not change afterwards,
 and whose verification command must fail at approval and pass, with the bootstrap, at `pass`.
+`pass` also refuses work that changed, since the task was first activated, a file its SCOPE does not list.
 `joy task` rewrites the spec's STATE and EVIDENCE sections from the ledger on every save.
 
 To keep the ledger the size of the current work, every save moves `passing` and `dropped` tasks to
@@ -199,8 +200,8 @@ def frozen_part(text: str) -> str:
     return text.split(FROZEN_END, 1)[0]
 
 
-def parse_draft(text: str) -> tuple[str, str, str]:
-    """Check a spec draft and return its title, its frozen body below the title and its verification command."""
+def parse_draft(text: str) -> tuple[str, str, str, list[str]]:
+    """Check a spec draft and return its title, its frozen body below the title, its verification command and its SCOPE paths."""
     lines = text.splitlines()
     start = next((i for i, line in enumerate(lines) if line.startswith("# ")), None)
     if start is None:
@@ -220,10 +221,16 @@ def parse_draft(text: str) -> tuple[str, str, str]:
         raise LedgerError("the draft's TASK section is empty")
     if not re.search(r"^- \S", sections["SCOPE"], flags=re.M):
         raise LedgerError("the draft's SCOPE section must list the files the task may change, one `- ` item each")
+    scope = []
+    for item in re.findall(r"^- (.*)$", sections["SCOPE"], flags=re.M):
+        path = re.match(r"`([^`]+)`", item)
+        if not path:
+            raise LedgerError(f"the draft's SCOPE items must each start with a path in backticks, not: - {item}")
+        scope.append(path[1].removeprefix("./"))
     commands = re.findall(r"^```bash\n(.*?)^```", sections["DONE WHEN"], flags=re.M | re.S)
     if len(commands) != 1 or not commands[0].strip():
         raise LedgerError("the draft's DONE WHEN section must hold exactly one ```bash verification command block")
-    return title, frozen.split("\n", 1)[1], commands[0].strip()
+    return title, frozen.split("\n", 1)[1], commands[0].strip(), scope
 
 
 def run_command(command: list[str]) -> dict:
@@ -242,6 +249,58 @@ def check_spec(task: dict) -> None:
             f"{path} changed since it was approved (TASK, SCOPE or DONE WHEN): restore it, "
             f"or ask a human to drop {task['id']} and approve a new draft"
         )
+
+
+def repo_root() -> Path:
+    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise LedgerError("the SCOPE check needs a git repository: run joy task from inside one")
+    return Path(result.stdout.strip())
+
+
+def git(root: Path, *args: str) -> str:
+    result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise LedgerError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+    return result.stdout
+
+
+def changed_files(root: Path, commit: str) -> dict:
+    """Hash every file that differs from `commit`, committed or not; gitignored files never count."""
+    paths = set(git(root, "diff", "--name-only", "--no-renames", "-z", commit).split("\0"))
+    paths |= set(git(root, "ls-files", "--others", "--exclude-standard", "-z").split("\0"))
+    hashes = {}
+    for p in sorted(paths - {""}):
+        path = root / p
+        if path.is_symlink():
+            hashes[p] = fingerprint("symlink:" + os.readlink(path))
+        elif path.is_file():
+            hashes[p] = hashlib.sha256(path.read_bytes()).hexdigest()
+        else:
+            hashes[p] = None
+    return hashes
+
+
+def take_baseline(task: dict) -> None:
+    # The first activation only: work done before a block still belongs to the task.
+    if "scope" not in task.get("spec", {}) or "baseline" in task:
+        return
+    root = repo_root()
+    head = subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD"], cwd=root, capture_output=True, text=True)
+    # A repository without commits yet compares with the empty tree.
+    commit = head.stdout.strip() if head.returncode == 0 else git(root, "hash-object", "-t", "tree", "/dev/null").strip()
+    task["baseline"] = {"commit": commit, "changes": changed_files(root, commit)}
+
+
+def files_outside_scope(task: dict) -> list[str]:
+    if "scope" not in task.get("spec", {}) or "baseline" not in task:
+        return []  # approved or activated before the SCOPE check existed
+    before = task["baseline"]["changes"]
+    now = changed_files(repo_root(), task["baseline"]["commit"])
+    same = object()  # a file absent from both is as it was in the baseline commit
+    touched = [p for p in sorted(before.keys() | now.keys()) if before.get(p, same) != now.get(p, same)]
+    scope = task["spec"]["scope"]
+    return [p for p in touched if not any(p == s or (s.endswith("/") and p.startswith(s)) for s in scope)]
 
 
 def write_spec_tail(state: str, task: dict) -> None:
@@ -303,7 +362,7 @@ def cmd_add(args) -> int:
     drafts = instructions_dir(args.state) / "drafts"
     if draft.resolve().parent != drafts.resolve():
         raise LedgerError(f"{draft} is not in the drafts folder of {args.state}: write it directly inside {drafts}")
-    title, body, verify = parse_draft(draft.read_text())
+    title, body, verify, scope = parse_draft(draft.read_text())
     tid = f"T-{ledger['next_id']}"
     frozen = f"# {tid}. {title}\n{body}"
     print(frozen)
@@ -311,7 +370,7 @@ def cmd_add(args) -> int:
     # Only humans approve: a spec decides what "done" means for the task.
     confirm_by_human(tid, "to approve this task", "add")
     task = {"id": tid, "title": title, "state": "not_started", "added_at": now()}
-    task["spec"] = {"path": str(instructions_dir(args.state) / f"{tid}.md"), "sha256": fingerprint(frozen), "verify": verify}
+    task["spec"] = {"path": str(instructions_dir(args.state) / f"{tid}.md"), "sha256": fingerprint(frozen), "verify": verify, "scope": scope}
     before = run_verification(task)
     print("\n".join(before["output_tail"]))
     if before["exit_code"] == 0:
@@ -346,6 +405,7 @@ def cmd_activate(args) -> int:
         print(f"refused: VCR is {passing}/{activated} < 1.0 ({busy}). "
               f"WIP limit is {wip_limit(ledger)}. Get it passing (joy task pass) or ask a human.", file=sys.stderr)
         return 1
+    take_baseline(task)
     task["state"] = "active"
     task["activated_at"] = now()
     task.pop("blocker", None)
@@ -401,6 +461,11 @@ def cmd_pass(args) -> int:
     require_state(task, "active")
     if "spec" in task:
         check_spec(task)
+    outside = files_outside_scope(task)
+    if outside:
+        print(f"refused: {task['id']} changed files outside its SCOPE since it was activated: {', '.join(outside)}. "
+              f"Undo those changes, or ask a human to drop {task['id']} and approve a draft with the right SCOPE.", file=sys.stderr)
+        return 1
     command = ledger["bootstrap"]
     print(f"==> running {command} for {task['id']}")
     bootstrap = {"command": command, **run_command([command])}

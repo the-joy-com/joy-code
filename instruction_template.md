@@ -6,7 +6,7 @@ Every task in a Joy task ledger starts from a spec based on this template. Copy 
 uv run --locked --project cli joy task add --spec harness/instructions/drafts/<name>.md --state harness/state
 ```
 
-`joy task add` checks the draft and shows it, asks the human to type the new task id (for example `T-3`) at an interactive terminal, then runs the verification command, which must fail. Only then does it add the task to the ledger, write the spec to `harness/instructions/<id>.md` (`harness/instructions/<application>/<id>.md` for a target application) and delete the draft. From then on, TASK, SCOPE and DONE WHEN are frozen: `joy task activate` and `joy task pass` refuse to run if they changed. `joy task` writes STATE and EVIDENCE itself.
+`joy task add` checks the draft and shows it, asks the human to type the new task id (for example `T-3`) at an interactive terminal, then runs the verification command, which must fail. Only then does it add the task to the ledger, write the spec to `harness/instructions/<id>.md` (`harness/instructions/<application>/<id>.md` for a target application) and delete the draft. From then on, TASK, SCOPE and DONE WHEN are frozen: `joy task activate` and `joy task pass` refuse to run if they changed, and `joy task pass` refuses work that changed a file SCOPE does not list. `joy task` writes STATE and EVIDENCE itself.
 
 ---
 
@@ -23,7 +23,7 @@ Files and folders this task is expected to change:
 - `<path>`
 - `<path to the test file>`
 
-Needing to change anything else means the task is wrong or out of scope: write a new draft for it, or block this task and ask a human (see `AGENTS.md`).
+Start each item with a path in backticks, relative to the repository root; a path ending in `/` is a folder and covers every file under it. `joy task pass` refuses work that changed any other file since the task was activated (gitignored files do not count). Needing to change anything else means the task is wrong or out of scope: write a new draft for it, or block this task and ask a human (see `AGENTS.md`).
 
 ## DONE WHEN
 

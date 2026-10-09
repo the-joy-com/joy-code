@@ -64,7 +64,7 @@ Each state folder under `harness/state/` holds a `tasks.json` ledger that enforc
 uv run --locked --project cli joy task --help
 ```
 
-Only a human can add a task: `joy task add --spec <draft>` shows a spec draft and asks to type the new task id in an interactive terminal (see Tasks below). `joy task activate` refuses to start a task while the Verified Completion Rate (passing tasks / activated tasks) is below 1.0, and only `joy task pass`, which runs the ledger's bootstrap script and the task's verification command and records the evidence, marks a task `passing`. Finished tasks move to `tasks.archive.jsonl`, so the ledger stays the size of the open work. Only a human can drop a task (`joy task drop` asks to type the task id in an interactive terminal) or change the WIP limit, 1 by default (`joy task wip <n>` asks to type the new limit there).
+Only a human can add a task: `joy task add --spec <draft>` shows a spec draft and asks to type the new task id in an interactive terminal (see Tasks below). `joy task activate` refuses to start a task while the Verified Completion Rate (passing tasks / activated tasks) is below 1.0, and only `joy task pass`, which refuses work that changed files outside the task's SCOPE, runs the ledger's bootstrap script and the task's verification command and records the evidence, marks a task `passing`. Finished tasks move to `tasks.archive.jsonl`, so the ledger stays the size of the open work. Only a human can drop a task (`joy task drop` asks to type the task id in an interactive terminal) or change the WIP limit, 1 by default (`joy task wip <n>` asks to type the new limit there).
 
 A task moves through these states, and leaves the ledger once it is finished:
 
@@ -74,7 +74,7 @@ stateDiagram-v2
     not_started --> active: activate (spec unchanged, Verified Completion Rate 1.0, under the WIP limit)
     active --> blocked: block with a reason
     blocked --> active: activate (resume)
-    active --> passing: pass (bootstrap and verification command exit 0)
+    active --> passing: pass (only SCOPE files changed, bootstrap and verification command exit 0)
     not_started --> dropped: drop (human only)
     active --> dropped: drop (human only)
     blocked --> dropped: drop (human only)
@@ -87,7 +87,7 @@ stateDiagram-v2
 `harness/instructions` holds the approved task specifications, one per task, named after the task ledger id (`T-1.md`, `T-2.md`, ...; `harness/instructions/<application>/` for a target application). Each starts as a draft based on [`instruction_template.md`](instruction_template.md), written in the drafts folder (`harness/instructions/drafts/`, or `harness/instructions/<application>/drafts/` for a target application), with five sections:
 
 - **TASK**: the behavior to build, as a user or caller observes it.
-- **SCOPE**: the files the task is expected to change. Anything else becomes a new draft or a question for a human.
+- **SCOPE**: the files the task may change, one `- ` item each starting with a path in backticks (a path ending in `/` covers a whole folder). `joy task pass` refuses work that changed anything else (see SCOPE check below), so anything else becomes a new draft or a question for a human.
 - **DONE WHEN**: the definition of done, including one verification command that decides pass or fail by its exit code and sets up its own data.
 - **STATE**: the task's current state, written by `joy task`.
 - **EVIDENCE**: the verification command's output when the spec was approved and when the task passed, written by `joy task`.
@@ -116,9 +116,10 @@ sequenceDiagram
     end
     Agent->>Joy: joy task activate T-n
     Joy->>Joy: check the fingerprint, the Verified Completion Rate and the WIP limit
+    Joy->>Joy: record the files that already differ from the last commit (SCOPE baseline)
     Agent->>Agent: failing test first, then the code, within SCOPE
     Agent->>Joy: joy task pass T-n
-    Joy->>Joy: check the fingerprint, run the bootstrap and the verification command
+    Joy->>Joy: check the fingerprint and the SCOPE, run the bootstrap and the verification command
     Joy-->>Agent: passing, After evidence written, task archived
     Agent->>Human: stage the work and ask for a review
 ```
@@ -157,7 +158,27 @@ harness/instructions/T-n.md changed since it was approved (TASK, SCOPE or DONE W
 
 **How to recover.** Restore the frozen part of `T-n.md` exactly as it was approved. Approved specs are not tracked by git (`harness/instructions/.gitignore`), so there is no `git checkout` to fall back on: undo the edit by hand. When the spec itself turns out to be wrong, the fix is not to edit it: a human drops the task (`joy task drop`) and approves a new draft.
 
-**Its limits.** The fingerprint protects the definition of done, not the work: it does not check which files the work changed against SCOPE (planned in [`ROADMAP.md`](ROADMAP.md), Scope check). And it is only as safe as the ledger that stores it: an edited `tasks.json` could carry a new hash, which is why [`AGENTS.md`](AGENTS.md) forbids editing harness task JSON files by any means.
+**Its limits.** The fingerprint protects the definition of done, not the work: checking which files the work changed is the job of the SCOPE check below. And it is only as safe as the ledger that stores it: an edited `tasks.json` could carry a new hash, which is why [`AGENTS.md`](AGENTS.md) forbids editing harness task JSON files by any means.
+
+#### SCOPE check
+
+The fingerprint keeps SCOPE from changing; the SCOPE check makes the work stay inside it. Without it, an agent could "also" fix or refactor files the human never approved it to touch, and the task would still pass.
+
+**What SCOPE allows.** When a human approves a draft, `joy task add --spec` reads one path from each `- ` item of SCOPE, the text in backticks at the start of the item, and keeps its own copy in the ledger. A path is relative to the repository root and names a file, or a folder when it ends in `/`, covering every file under it. `add` refuses a draft with an item that does not start with a path.
+
+**The baseline.** The repository is rarely clean when a task starts: other work may be staged or waiting for a review. So the first `joy task activate` records the current commit and a SHA-256 hash of every file that already differs from it, staged, unstaged or untracked. Resuming a `blocked` task keeps that first baseline, so work done before the block still counts. Outside a git repository, `activate` refuses.
+
+**What the work changed.** At `joy task pass`, a file counts as changed when its content differs from the baseline: a new, edited or deleted file, a change committed since activation, or a file that was already modified at activation and was edited again or restored. Changes that were already there and are left alone do not count. Neither do gitignored files, such as the ledgers, the progress files and the specs, which `joy task` and the agent write as part of the routine.
+
+**When it is checked.** `joy task pass` runs it right after the fingerprint, before the bootstrap. When a changed file is outside SCOPE, it refuses, and the task stays `active`:
+
+```text
+refused: T-n changed files outside its SCOPE since it was activated: docs/x.md. Undo those changes, or ask a human to drop T-n and approve a draft with the right SCOPE.
+```
+
+**How to recover.** Undo the changes outside SCOPE, and write a draft for them if they are worth doing. When the task really needs them, its SCOPE is wrong: a human drops the task and approves a new draft. When a human made the change during the task, ask a human too.
+
+**Its limits.** The check sees files, not intent: any change to a file in SCOPE passes it, which is what the verification command and the human review are for. Tasks approved or activated before the check existed have no SCOPE copy or baseline, and `pass` skips the check for them.
 
 ## Examples
 
